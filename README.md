@@ -331,7 +331,7 @@ Containers do not restart automatically after a reboot unless you create a syste
 ```bash
 cat > /etc/systemd/system/nola-cameras.service << 'EOF'
 [Unit]
-Description=NOLA Camera Mapping
+Description=New Orleans Camera Mapping
 After=network-online.target
 Wants=network-online.target
 

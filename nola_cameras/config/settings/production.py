@@ -1,5 +1,5 @@
 """
-Production settings for NOLA Camera Mapping project.
+Production settings for New Orleans Camera Mapping project.
 """
 
 from .base import *  # noqa: F401, F403

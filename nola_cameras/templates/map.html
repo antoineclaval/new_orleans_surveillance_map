@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}NOLA Camera Map - Surveillance Camera Locations{% endblock %}
+{% block title %}New Orleans Camera Map - Surveillance Camera Locations{% endblock %}
 
 {% block extra_css %}
 <style>
@@ -110,7 +110,7 @@
                     <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
                           d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
                 </svg>
-                <span class="font-semibold text-lg hidden sm:inline">NOLA Camera Map</span>
+                <span class="font-semibold text-lg hidden sm:inline">New Orleans Camera Map</span>
             </a>
             <div class="flex items-center space-x-2 sm:space-x-4">
                 <button id="filter-toggle"
@@ -216,11 +216,31 @@
                 </template>
             </div>
 
-            <template x-if="selectedCamera?.properties?.image">
-                <div class="mb-4">
-                    <img :src="selectedCamera.properties.image"
+            <template x-if="cameraImages.length > 0">
+                <div class="mb-4 relative">
+                    <img :src="cameraImages[currentImageIndex]"
                          alt="Camera photo"
                          class="w-full h-48 object-cover rounded-lg">
+                    <template x-if="cameraImages.length > 1">
+                        <div>
+                            <button @click="currentImageIndex = (currentImageIndex - 1 + cameraImages.length) % cameraImages.length"
+                                    class="absolute left-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-7 h-7 flex items-center justify-center text-lg leading-none">
+                                ‹
+                            </button>
+                            <button @click="currentImageIndex = (currentImageIndex + 1) % cameraImages.length"
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 bg-black/50 hover:bg-black/70 text-white rounded-full w-7 h-7 flex items-center justify-center text-lg leading-none">
+                                ›
+                            </button>
+                            <div class="absolute bottom-2 left-0 right-0 flex justify-center gap-1">
+                                <template x-for="(_, i) in cameraImages" :key="i">
+                                    <button @click="currentImageIndex = i"
+                                            :class="i === currentImageIndex ? 'bg-white' : 'bg-white/50'"
+                                            class="w-1.5 h-1.5 rounded-full transition-colors">
+                                    </button>
+                                </template>
+                            </div>
+                        </div>
+                    </template>
                 </div>
             </template>
 
@@ -233,8 +253,15 @@
     </div>
 
     <!-- Camera Count -->
-    <div class="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg shadow px-3 py-2 text-sm text-gray-600">
-        <span x-text="cameraCount"></span> cameras
+    <div class="absolute bottom-4 left-4 z-[1000] flex flex-col gap-1">
+        <div class="bg-white rounded-lg shadow px-3 py-2 text-sm text-gray-600">
+            <span x-text="cameraCount"></span> cameras
+        </div>
+        {% if pending_count %}
+        <div class="bg-white rounded-lg shadow px-3 py-2 text-sm text-amber-600">
+            {{ pending_count }} pending review
+        </div>
+        {% endif %}
     </div>
 </div>
 
@@ -253,12 +280,19 @@ function cameraMap() {
         markers: null,
         cameras: [],
         selectedCamera: null,
+        currentImageIndex: 0,
         loading: true,
         showFilters: false,
         cameraCount: 0,
         filters: {
             facialRecognition: false,
             hasShop: false
+        },
+
+        get cameraImages() {
+            if (!this.selectedCamera) return [];
+            const p = this.selectedCamera.properties;
+            return [p.image, p.image_2, p.image_3].filter(Boolean);
         },
 
         init() {
@@ -279,6 +313,9 @@ function cameraMap() {
                 zoomToBoundsOnClick: true
             });
             this.map.addLayer(this.markers);
+
+            // Reset image index when a different camera is selected
+            this.$watch('selectedCamera', () => { this.currentImageIndex = 0; });
 
             // Load cameras
             this.loadCameras();

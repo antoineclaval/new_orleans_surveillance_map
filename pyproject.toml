@@ -6,7 +6,7 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = {text = "MIT"}
 authors = [
-    {name = "NOLA Camera Project"}
+    {name = "New Orleans Camera Project"}
 ]
 keywords = ["django", "gis", "mapping", "surveillance", "new-orleans"]
 

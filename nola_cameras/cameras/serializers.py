@@ -24,6 +24,8 @@ class CameraGeoSerializer(GeoFeatureModelSerializer):
             "facial_recognition",
             "associated_shop",
             "image",
+            "image_2",
+            "image_3",
         ]
 
 

@@ -6,6 +6,7 @@ from django.urls import reverse_lazy
 from django.views.generic import FormView, TemplateView
 
 from .forms import CameraReportForm
+from .models import Camera
 
 _MOBILE_UA_KEYWORDS = ("mobile", "android", "iphone", "ipad", "ipod")
 
@@ -16,6 +17,13 @@ class MapView(TemplateView):
     """
 
     template_name = "map.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["pending_count"] = Camera.objects.filter(
+            status=Camera.Status.PENDING
+        ).count()
+        return context
 
 
 class CameraReportView(FormView):

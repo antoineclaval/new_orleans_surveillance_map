@@ -1,5 +1,5 @@
 """
-Base Django settings for NOLA Camera Mapping project.
+Base Django settings for New Orleans Camera Mapping project.
 """
 
 import os

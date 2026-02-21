@@ -627,7 +627,7 @@ prep_step_ssh_harden() {
     read -rp "I have confirmed key-based SSH access works. Press Enter to apply hardening... "
 
     cat > /etc/ssh/sshd_config.d/99-hardening.conf << 'EOF'
-# NOLA Camera Mapping — SSH Hardening
+# New Orleans Camera Mapping — SSH Hardening
 # Applied by scripts/setup.sh prepare-prod
 # To revert: rm /etc/ssh/sshd_config.d/99-hardening.conf && systemctl restart ssh
 

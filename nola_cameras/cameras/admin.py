@@ -6,7 +6,7 @@ from django.contrib import admin
 from django.contrib.gis.admin import GISModelAdmin
 from django.utils import timezone
 from django.utils.html import format_html
-from import_export import resources
+from import_export import fields, resources
 from import_export.admin import ExportMixin
 
 from .models import Camera
@@ -15,18 +15,34 @@ from .models import Camera
 class CameraResource(resources.ModelResource):
     """Resource for CSV/GeoJSON export."""
 
+    latitude = fields.Field(column_name="latitude")
+    longitude = fields.Field(column_name="longitude")
+    vetted_by_username = fields.Field(column_name="vetted_by")
+
+    def dehydrate_latitude(self, camera):
+        return camera.location.y if camera.location else ""
+
+    def dehydrate_longitude(self, camera):
+        return camera.location.x if camera.location else ""
+
+    def dehydrate_vetted_by_username(self, camera):
+        return camera.vetted_by.username if camera.vetted_by_id else ""
+
     class Meta:
         model = Camera
         fields = (
             "id",
             "cross_road",
             "street_address",
+            "latitude",
+            "longitude",
             "facial_recognition",
             "associated_shop",
             "status",
             "reported_by",
             "reported_at",
             "vetted_at",
+            "vetted_by_username",
             "notes",
         )
         export_order = fields
@@ -91,6 +107,8 @@ class CameraAdmin(ExportMixin, GISModelAdmin):
         "updated_at",
         "reported_at",
         "image_preview_large",
+        "image_preview_large_2",
+        "image_preview_large_3",
     ]
     date_hierarchy = "reported_at"
     actions = [approve_cameras, reject_cameras, mark_pending]
@@ -105,7 +123,16 @@ class CameraAdmin(ExportMixin, GISModelAdmin):
         (
             "Camera Details",
             {
-                "fields": ("facial_recognition", "associated_shop", "image", "image_preview_large"),
+                "fields": (
+                    "facial_recognition",
+                    "associated_shop",
+                    "image",
+                    "image_preview_large",
+                    "image_2",
+                    "image_preview_large_2",
+                    "image_3",
+                    "image_preview_large_3",
+                ),
             },
         ),
         (
@@ -177,11 +204,12 @@ class CameraAdmin(ExportMixin, GISModelAdmin):
     facial_recognition_badge.admin_order_field = "facial_recognition"
 
     def image_preview(self, obj):
-        """Display thumbnail in list view."""
-        if obj.image:
+        """Display thumbnail in list view (first available image)."""
+        img = obj.image or obj.image_2 or obj.image_3
+        if img:
             return format_html(
                 '<img src="{}" style="max-height: 40px; max-width: 60px; object-fit: cover;"/>',
-                obj.image.url,
+                img.url,
             )
         return "-"
 
@@ -198,6 +226,28 @@ class CameraAdmin(ExportMixin, GISModelAdmin):
 
     image_preview_large.short_description = "Image Preview"
 
+    def image_preview_large_2(self, obj):
+        """Display second image in detail view."""
+        if obj.image_2:
+            return format_html(
+                '<img src="{}" style="max-height: 300px; max-width: 400px;"/>',
+                obj.image_2.url,
+            )
+        return "No image uploaded"
+
+    image_preview_large_2.short_description = "Image 2 Preview"
+
+    def image_preview_large_3(self, obj):
+        """Display third image in detail view."""
+        if obj.image_3:
+            return format_html(
+                '<img src="{}" style="max-height: 300px; max-width: 400px;"/>',
+                obj.image_3.url,
+            )
+        return "No image uploaded"
+
+    image_preview_large_3.short_description = "Image 3 Preview"
+
     def save_model(self, request, obj, form, change):
         """Auto-fill vetted_by when status changes to vetted."""
         if obj.status == Camera.Status.VETTED and not obj.vetted_by:
@@ -212,6 +262,6 @@ class CameraAdmin(ExportMixin, GISModelAdmin):
 
 
 # Customize admin site
-admin.site.site_header = "NOLA Camera Mapping Admin"
-admin.site.site_title = "NOLA Cameras"
+admin.site.site_header = "New Orleans Camera Mapping Admin"
+admin.site.site_title = "New Orleans Cameras"
 admin.site.index_title = "Camera Management"

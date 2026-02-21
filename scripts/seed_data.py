@@ -1,5 +1,5 @@
 """
-Seed script for NOLA Camera Mapping.
+Seed script for New Orleans Camera Mapping.
 Creates sample camera data for development and testing.
 
 Run with: python manage.py shell < scripts/seed_data.py

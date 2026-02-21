@@ -1,5 +1,5 @@
 """
-Camera model for NOLA surveillance camera mapping.
+Camera model for New Orleans surveillance camera mapping.
 """
 
 import uuid

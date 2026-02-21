@@ -1,5 +1,5 @@
 """
-WSGI config for NOLA Camera Mapping project.
+WSGI config for  Camera Mapping project.
 """
 
 import os
