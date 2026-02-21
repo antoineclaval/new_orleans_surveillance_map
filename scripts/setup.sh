@@ -610,6 +610,160 @@ prep_step_firewall() {
     print_status "Firewall configured: SSH, HTTP, HTTPS allowed"
 }
 
+prep_step_ssh_harden() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root."
+        exit 1
+    fi
+
+    print_warning "SSH hardening will:"
+    echo "  • Disable password-based root login (key-based root stays active)"
+    echo "  • Disable password authentication for all users"
+    echo "  • Limit auth attempts to 3, idle timeout 10 min"
+    echo ""
+    print_warning "PREREQUISITE: Your SSH public key must already be in /root/.ssh/authorized_keys"
+    print_warning "Open a second terminal and test 'ssh root@<server>' with your key BEFORE continuing."
+    echo ""
+    read -rp "I have confirmed key-based SSH access works. Press Enter to apply hardening... "
+
+    cat > /etc/ssh/sshd_config.d/99-hardening.conf << 'EOF'
+# NOLA Camera Mapping — SSH Hardening
+# Applied by scripts/setup.sh prepare-prod
+# To revert: rm /etc/ssh/sshd_config.d/99-hardening.conf && systemctl restart ssh
+
+# Allow root only via key, not password (Hetzner default user is root)
+PermitRootLogin prohibit-password
+
+# No password auth anywhere
+PasswordAuthentication no
+PermitEmptyPasswords no
+ChallengeResponseAuthentication no
+KbdInteractiveAuthentication no
+
+# Rate-limit attempts and idle connections
+MaxAuthTries 3
+MaxSessions 5
+ClientAliveInterval 300
+ClientAliveCountMax 2
+EOF
+
+    # Validate config before restarting
+    sshd -t || {
+        print_error "sshd config validation failed — reverting"
+        rm -f /etc/ssh/sshd_config.d/99-hardening.conf
+        exit 1
+    }
+
+    systemctl restart ssh
+    print_status "SSH hardened. Key-based auth only. Password login disabled."
+}
+
+prep_step_fail2ban() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root."
+        exit 1
+    fi
+
+    apt-get install -y fail2ban
+
+    # jail.local overrides defaults; don't touch jail.conf (wiped on upgrades)
+    cat > /etc/fail2ban/jail.d/nola.local << 'EOF'
+# NOLA Camera Mapping — fail2ban jails
+# Applied by scripts/setup.sh prepare-prod
+
+[DEFAULT]
+bantime  = 1h
+findtime = 10m
+maxretry = 5
+
+[sshd]
+enabled  = true
+port     = ssh
+maxretry = 3
+EOF
+
+    systemctl enable fail2ban
+    systemctl restart fail2ban
+    print_status "fail2ban enabled — SSH jail active (ban after 3 attempts / 1h)"
+    print_info "Check status anytime: fail2ban-client status sshd"
+}
+
+prep_step_sysctl_harden() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root."
+        exit 1
+    fi
+
+    cat > /etc/sysctl.d/99-nola-hardening.conf << 'EOF'
+# NOLA Camera Mapping — Kernel Hardening
+# Applied by scripts/setup.sh prepare-prod
+
+# NOTE: ip_forward left enabled — required for podman bridge networking
+net.ipv4.ip_forward = 1
+
+# SYN flood protection
+net.ipv4.tcp_syncookies = 1
+net.ipv4.tcp_max_syn_backlog = 2048
+net.ipv4.tcp_synack_retries = 2
+
+# ICMP hardening
+net.ipv4.icmp_echo_ignore_broadcasts = 1
+net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+# Disable ICMP redirects (not a router)
+net.ipv4.conf.all.send_redirects = 0
+net.ipv4.conf.default.send_redirects = 0
+net.ipv4.conf.all.accept_redirects = 0
+net.ipv4.conf.default.accept_redirects = 0
+net.ipv6.conf.all.accept_redirects = 0
+
+# Source routing (used in spoofing attacks)
+net.ipv4.conf.all.accept_source_route = 0
+net.ipv4.conf.default.accept_source_route = 0
+
+# Reverse path filtering (anti-spoofing)
+net.ipv4.conf.all.rp_filter = 1
+net.ipv4.conf.default.rp_filter = 1
+
+# Log martians (packets with impossible source addresses)
+net.ipv4.conf.all.log_martians = 1
+EOF
+
+    sysctl --system > /dev/null
+    print_status "Kernel hardening applied (/etc/sysctl.d/99-nola-hardening.conf)"
+}
+
+prep_step_auto_updates() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root."
+        exit 1
+    fi
+
+    apt-get install -y unattended-upgrades
+
+    # 20auto-upgrades: enable daily security update downloads and installs
+    cat > /etc/apt/apt.conf.d/20auto-upgrades << 'EOF'
+APT::Periodic::Update-Package-Lists "1";
+APT::Periodic::Download-Upgradeable-Packages "1";
+APT::Periodic::AutocleanInterval "7";
+APT::Periodic::Unattended-Upgrade "1";
+EOF
+
+    # Disable auto-reboot — containers don't survive host reboots without restart policies
+    # Operators should reboot manually during maintenance windows
+    if [ -f /etc/apt/apt.conf.d/50unattended-upgrades ]; then
+        sed -i 's|//Unattended-Upgrade::Automatic-Reboot ".*";|Unattended-Upgrade::Automatic-Reboot "false";|' \
+            /etc/apt/apt.conf.d/50unattended-upgrades
+        sed -i 's|Unattended-Upgrade::Automatic-Reboot "true";|Unattended-Upgrade::Automatic-Reboot "false";|' \
+            /etc/apt/apt.conf.d/50unattended-upgrades
+    fi
+
+    systemctl enable unattended-upgrades
+    systemctl restart unattended-upgrades
+    print_status "Automatic security updates enabled (no auto-reboot)"
+    print_info "Reboot manually after kernel updates: sudo reboot"
+}
+
 prep_step_env() {
     create_env_file
     echo ""
@@ -765,6 +919,10 @@ prepare_prod() {
     local steps=(
         "system_deps|Install system dependencies|prep_step_system_deps"
         "firewall|Configure firewall (ufw)|prep_step_firewall"
+        "ssh_harden|Harden SSH configuration|prep_step_ssh_harden"
+        "fail2ban|Install & configure fail2ban|prep_step_fail2ban"
+        "sysctl_harden|Apply kernel hardening (sysctl)|prep_step_sysctl_harden"
+        "auto_updates|Enable automatic security updates|prep_step_auto_updates"
         "env|Configure environment (.env)|prep_step_env"
         "validate_env|Validate environment variables|prep_step_validate_env"
         "dns|Verify DNS resolution|prep_step_dns"
@@ -820,7 +978,8 @@ show_help() {
     echo "  superuser             Create Django admin superuser"
     echo ""
     echo -e "${BLUE}Server Setup Commands:${NC}"
-    echo "  prepare-prod    Full VPS setup from scratch (resumable, checkpointed)"
+    echo "  prepare-prod    Full VPS setup + hardening (resumable, checkpointed)"
+    echo "                  Includes: SSH hardening, fail2ban, sysctl, auto-updates"
     echo "                  Re-run after fixing any failure to resume from that step"
     echo "                  Reset progress: rm .prepare_prod_state"
     echo ""
