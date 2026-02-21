@@ -1,0 +1,33 @@
+# Caddyfile for NOLA Camera Mapping
+# Replace {$DOMAIN} with your actual domain or use localhost for local testing
+
+{$DOMAIN:localhost} {
+    # Enable compression
+    encode gzip
+
+    # Handle static files
+    handle /static/* {
+        root * /srv
+        file_server
+    }
+
+    # Handle media files (uploaded images)
+    handle /media/* {
+        root * /srv
+        file_server
+    }
+
+    # Proxy everything else to Django
+    handle {
+        reverse_proxy web:8000 {
+            header_up X-Forwarded-Proto {scheme}
+            header_up X-Real-IP {remote_host}
+        }
+    }
+
+    # Logging
+    log {
+        output stdout
+        format console
+    }
+}

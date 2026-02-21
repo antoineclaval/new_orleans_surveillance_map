@@ -1,0 +1,52 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.venv/
+ENV/
+.eggs/
+*.egg-info/
+*.egg
+
+# UV
+# Note: uv.lock should be committed for reproducible builds
+# .python-version is committed to specify Python version
+
+# Django
+*.log
+local_settings.py
+db.sqlite3
+*.pot
+*.pyc
+staticfiles/
+media/
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Node
+node_modules/
+npm-debug.log
+
+# Tailwind output (regenerated)
+nola_cameras/static/css/main.css
+
+# Containers
+*.tar

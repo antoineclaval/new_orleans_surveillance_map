@@ -1,0 +1,544 @@
+# NOLA Camera Mapping
+
+A web application to map surveillance cameras in New Orleans with three user types:
+- **Read-only viewers**: Browse the camera map
+- **Editors**: Submit new camera sightings for review
+- **Admins**: Review submissions, manage cameras (CRUD)
+
+## Features
+
+- Interactive map with camera locations using Leaflet.js and OpenStreetMap
+- Marker clustering for better visualization at different zoom levels
+- Filter cameras by facial recognition capability or private ownership
+- Mobile-responsive design with bottom sheet for camera details
+- Public submission form with map-based location picker
+- Django admin with map widget, bulk actions, and CSV/GeoJSON export
+- Spam prevention via honeypot field
+- Containerized deployment with Podman
+
+## Tech Stack
+
+| Component | Technology |
+|-----------|------------|
+| Backend | Django 5.x, Django REST Framework, GeoDjango |
+| Database | PostgreSQL 16 with PostGIS 3.4 |
+| Frontend | Leaflet.js, Alpine.js, Tailwind CSS (CDN) |
+| Package Manager | [UV](https://github.com/astral-sh/uv) (fast Python package installer) |
+| Containers | Podman, podman-compose |
+| Reverse Proxy | Caddy (production) |
+
+---
+
+## Development Setup
+
+There are two ways to develop locally:
+
+| Mode | Command | Best For |
+|------|---------|----------|
+| **Local** (recommended) | `./scripts/setup.sh local` | Fast iteration, IDE support, debugging |
+| **Containerized** | `./scripts/setup.sh dev` | Testing containers, CI/CD consistency |
+
+### Prerequisites
+
+#### System Dependencies
+
+**Fedora:**
+```bash
+# Required
+sudo dnf install podman podman-compose
+
+# For local development (GeoDjango dependencies)
+sudo dnf install gdal gdal-devel geos geos-devel proj proj-devel
+
+# UV package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+# Or: sudo dnf install uv
+```
+
+**Ubuntu/Debian:**
+```bash
+# Required
+sudo apt install podman podman-compose
+
+# For local development (GeoDjango dependencies)
+sudo apt install gdal-bin libgdal-dev libgeos-dev libproj-dev
+
+# UV package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**macOS:**
+```bash
+brew install podman podman-compose gdal geos proj
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+---
+
+### Fedora Silverblue / Kinoite
+
+Silverblue has an immutable base OS, so development dependencies should be installed inside a [toolbox](https://containertoolbx.org/) container. Podman is pre-installed and works great.
+
+#### One-Time Setup
+
+```bash
+# Create a dedicated development toolbox
+toolbox create project-nola-mapping
+
+# Enter the toolbox
+toolbox enter project-nola-mapping
+
+# Inside toolbox: Install development dependencies
+sudo dnf install -y \
+    podman-remote \
+    gdal gdal-devel \
+    geos geos-devel \
+    proj proj-devel \
+    openssl
+
+# Install UV package manager
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc
+```
+
+#### Configure Podman Access
+
+The toolbox needs to communicate with Podman on the host. Set up the remote connection:
+
+```bash
+# Inside the toolbox: Configure podman to use host's podman socket
+# This allows containers started from toolbox to run on the host
+
+# Create systemd user directory if needed (on host, not in toolbox)
+# Exit toolbox first, then run:
+exit
+systemctl --user enable --now podman.socket
+
+# Re-enter toolbox
+toolbox enter project-nola-mapping
+
+# Configure podman-remote to use host socket
+mkdir -p ~/.config/containers
+cat > ~/.config/containers/containers.conf << 'EOF'
+[engine]
+remote = true
+EOF
+
+# Create connection to host podman
+podman system connection add host unix:///run/user/$(id -u)/podman/podman.sock
+podman system connection default host
+
+# Verify it works
+podman ps
+```
+
+#### Daily Workflow
+
+```bash
+# Enter your development toolbox
+toolbox enter project-nola-mapping
+
+# Navigate to project (your home directory is shared)
+cd ~/path/to/project-nola-mapping
+
+# First time setup
+./scripts/setup.sh local
+
+# Start development server
+./scripts/setup.sh run
+```
+
+#### Why Toolbox?
+
+| Benefit | Description |
+|---------|-------------|
+| Mutable environment | Install any packages without layering |
+| Shared home directory | Your code, SSH keys, and configs are available |
+| Host Podman access | Containers run on host, not nested |
+| Isolated | Won't affect your base system |
+| Disposable | Easy to recreate if something breaks |
+
+---
+
+### Option 1: Local Development (Recommended)
+
+This mode runs Django directly on your machine with a containerized PostgreSQL database. It provides the best developer experience with fast iteration, full IDE integration, and easy debugging.
+
+```bash
+# Clone and enter the project
+git clone <repo-url>
+cd project-nola-mapping
+
+# Set up local development environment
+./scripts/setup.sh local
+```
+
+This command will:
+1. Check for required dependencies (UV, Podman, GeoDjango libraries)
+2. Create a `.env` file with secure generated passwords
+3. Create a Python virtual environment using UV
+4. Install all dependencies
+5. Start PostgreSQL/PostGIS in a container
+6. Run database migrations
+
+#### Start the Development Server
+
+```bash
+./scripts/setup.sh run
+```
+
+Or manually:
+```bash
+cd nola_cameras
+uv run python manage.py runserver
+```
+
+#### Access the Application
+
+| URL | Description |
+|-----|-------------|
+| http://localhost:8000 | Map view |
+| http://localhost:8000/report/ | Submit a camera |
+| http://localhost:8000/admin/ | Admin interface |
+
+#### Create an Admin User
+
+```bash
+./scripts/setup.sh superuser
+```
+
+#### Load Sample Data
+
+```bash
+./scripts/setup.sh seed
+```
+
+This adds 13 sample cameras around New Orleans (10 vetted, 2 pending, 1 rejected) for testing.
+
+#### Daily Workflow
+
+```bash
+# Start your day - database auto-starts if needed
+./scripts/setup.sh run
+
+# When done for the day (optional - saves resources)
+./scripts/setup.sh db-stop
+```
+
+#### Other Useful Commands
+
+```bash
+./scripts/setup.sh shell      # Django interactive shell
+./scripts/setup.sh migrate    # Run database migrations
+./scripts/setup.sh stop       # Stop all containers
+./scripts/setup.sh clean      # Remove everything (containers, volumes, venv)
+```
+
+---
+
+### Option 2: Containerized Development
+
+This mode runs everything in containers, including Django. Use this when you want to test the container build or ensure consistency with CI/CD.
+
+```bash
+./scripts/setup.sh dev
+```
+
+This starts:
+- PostgreSQL/PostGIS container
+- Django development server container (with code mounted for hot reload)
+
+Access at http://localhost:8000
+
+---
+
+### IDE Setup
+
+#### VS Code
+
+The project uses UV for package management. To get IDE features working:
+
+1. Open the project in VS Code
+2. Install the Python extension
+3. Select the interpreter: `.venv/bin/python`
+4. Install recommended extensions for Django/Python
+
+Create `.vscode/settings.json`:
+```json
+{
+  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
+  "python.analysis.extraPaths": ["${workspaceFolder}/nola_cameras"],
+  "[python]": {
+    "editor.defaultFormatter": "charliermarsh.ruff"
+  }
+}
+```
+
+#### PyCharm
+
+1. Open project settings
+2. Set Python interpreter to `.venv/bin/python`
+3. Mark `nola_cameras` as Sources Root
+
+---
+
+### Project Structure
+
+```
+project-nola-mapping/
+├── nola_cameras/                 # Django project root
+│   ├── manage.py
+│   ├── config/                   # Project configuration
+│   │   ├── settings/
+│   │   │   ├── base.py          # Shared settings
+│   │   │   ├── development.py   # Dev overrides
+│   │   │   └── production.py    # Production settings
+│   │   ├── urls.py
+│   │   └── wsgi.py
+│   ├── cameras/                  # Main application
+│   │   ├── models.py            # Camera model
+│   │   ├── views.py             # Page views
+│   │   ├── api.py               # REST API endpoints
+│   │   ├── serializers.py       # DRF serializers
+│   │   ├── forms.py             # Camera report form
+│   │   ├── admin.py             # Admin customization
+│   │   ├── urls.py              # App URL routes
+│   │   └── api_urls.py          # API URL routes
+│   ├── templates/
+│   │   ├── base.html            # Base template
+│   │   ├── map.html             # Main map view
+│   │   ├── report.html          # Submission form
+│   │   └── report_success.html  # Success page
+│   └── static/
+│       └── css/
+├── containers/
+│   ├── Containerfile            # Production image
+│   ├── Containerfile.dev        # Development image
+│   ├── podman-compose.yml       # Container orchestration
+│   └── Caddyfile                # Reverse proxy config
+├── scripts/
+│   ├── setup.sh                 # Setup and management script
+│   └── seed_data.py             # Sample data loader
+├── requirements/                 # Legacy pip requirements
+│   ├── base.txt
+│   ├── development.txt
+│   └── production.txt
+├── pyproject.toml               # UV/Python project config
+├── uv.lock                      # Locked dependencies
+├── .python-version              # Python version for UV
+└── .env                         # Environment variables (generated)
+```
+
+---
+
+## API Reference
+
+### GET /api/cameras/
+
+Returns all vetted cameras as GeoJSON.
+
+**Query Parameters:**
+
+| Parameter | Values | Description |
+|-----------|--------|-------------|
+| `facial_recognition` | `true`/`false` | Filter by FR capability |
+| `has_shop` | `true`/`false` | Filter by private/public |
+
+**Example:**
+```bash
+curl "http://localhost:8000/api/cameras/?facial_recognition=true"
+```
+
+**Response:**
+```json
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "geometry": {
+        "type": "Point",
+        "coordinates": [-90.0686, 29.9527]
+      },
+      "properties": {
+        "id": "550e8400-e29b-41d4-a716-446655440000",
+        "cross_road": "Canal St & Bourbon St",
+        "street_address": "100 Canal St",
+        "facial_recognition": true,
+        "associated_shop": "",
+        "image": null
+      }
+    }
+  ]
+}
+```
+
+### GET /api/cameras/{id}/
+
+Returns details for a single camera.
+
+---
+
+## Production Deployment
+
+### 1. Configure Environment
+
+Edit `.env` with production values:
+
+```bash
+# Generate a new secret key
+python3 -c "import secrets; print(secrets.token_urlsafe(50))"
+```
+
+```env
+DJANGO_SECRET_KEY=<paste-generated-key>
+DJANGO_ALLOWED_HOSTS=yourdomain.com
+CSRF_TRUSTED_ORIGINS=https://yourdomain.com
+DJANGO_DEBUG=False
+DOMAIN=yourdomain.com
+POSTGRES_PASSWORD=<strong-password>
+```
+
+### 2. Deploy
+
+```bash
+./scripts/setup.sh prod
+```
+
+This starts:
+- PostgreSQL/PostGIS
+- Django with Gunicorn
+- Caddy reverse proxy (auto-HTTPS)
+
+### 3. Create Admin User
+
+```bash
+./scripts/setup.sh superuser
+```
+
+---
+
+## Environment Variables
+
+| Variable | Description | Default |
+|----------|-------------|---------|
+| `DJANGO_SECRET_KEY` | Django secret key | Generated |
+| `DJANGO_ALLOWED_HOSTS` | Allowed hosts (comma-separated) | `localhost,127.0.0.1` |
+| `DJANGO_DEBUG` | Enable debug mode | `True` |
+| `POSTGRES_DB` | Database name | `nola_cameras` |
+| `POSTGRES_USER` | Database user | `nola` |
+| `POSTGRES_PASSWORD` | Database password | Generated |
+| `POSTGRES_HOST` | Database host | `localhost` |
+| `POSTGRES_PORT` | Database port | `5432` |
+| `CSRF_TRUSTED_ORIGINS` | CSRF trusted origins | `http://localhost:8000` |
+| `DOMAIN` | Production domain (for Caddy) | `localhost` |
+
+---
+
+## Troubleshooting
+
+### Database connection refused
+
+```bash
+# Check if the database container is running
+podman ps | grep nola-db
+
+# View database logs
+podman logs nola-db
+
+# Restart the database
+podman-compose -f containers/podman-compose.yml restart db
+```
+
+### GeoDjango import errors
+
+Ensure system dependencies are installed:
+
+```bash
+# Fedora
+sudo dnf install gdal gdal-devel geos geos-devel proj proj-devel
+
+# Ubuntu
+sudo apt install gdal-bin libgdal-dev libgeos-dev libproj-dev
+```
+
+### UV not found
+
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+source ~/.bashrc  # or restart your terminal
+```
+
+### Port 5432 already in use
+
+Another PostgreSQL instance may be running:
+
+```bash
+# Check what's using the port
+sudo lsof -i :5432
+
+# Stop local PostgreSQL if needed
+sudo systemctl stop postgresql
+```
+
+### Silverblue: Podman commands not working in toolbox
+
+If `podman` commands fail inside the toolbox:
+
+```bash
+# 1. Make sure the host podman socket is running (run on HOST, not in toolbox)
+exit  # exit toolbox first
+systemctl --user enable --now podman.socket
+systemctl --user status podman.socket  # should show "active"
+
+# 2. Re-enter toolbox and verify the socket is accessible
+toolbox enter project-nola-mapping
+ls -la /run/user/$(id -u)/podman/podman.sock
+
+# 3. Ensure podman-remote is configured
+cat ~/.config/containers/containers.conf
+# Should contain: remote = true
+
+# 4. Test the connection
+podman system connection list
+podman ps
+```
+
+### Silverblue: Permission denied on podman socket
+
+```bash
+# The socket might not be accessible. On the HOST (not toolbox):
+podman system connection add --default host unix:///run/user/$(id -u)/podman/podman.sock
+
+# Or reset and recreate:
+rm -rf ~/.config/containers/containers.conf
+rm -rf ~/.local/share/containers/podman/connections.json
+
+# Then follow the "Configure Podman Access" setup again
+```
+
+### Silverblue: Recreating the toolbox
+
+If the toolbox is broken, you can safely delete and recreate it:
+
+```bash
+# Exit the toolbox first
+exit
+
+# Remove the toolbox
+toolbox rm project-nola-mapping
+
+# Recreate it
+toolbox create project-nola-mapping
+toolbox enter project-nola-mapping
+
+# Reinstall dependencies (your project files in ~ are preserved)
+sudo dnf install -y podman-remote gdal gdal-devel geos geos-devel proj proj-devel openssl
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+---
+
+## License
+
+MIT

@@ -1,0 +1,47 @@
+# Production Containerfile for NOLA Camera Mapping
+FROM python:3.12-slim
+
+# Set environment variables
+ENV PYTHONDONTWRITEBYTECODE=1
+ENV PYTHONUNBUFFERED=1
+ENV DJANGO_SETTINGS_MODULE=config.settings.production
+
+# Install system dependencies for GeoDjango and UV
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    libpq-dev \
+    gdal-bin \
+    libgdal-dev \
+    libgeos-dev \
+    libproj-dev \
+    curl \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install UV
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.local/bin:$PATH"
+
+# Set work directory
+WORKDIR /app
+
+# Install Python dependencies with UV
+COPY requirements/ /app/requirements/
+RUN uv pip install --system --no-cache -r requirements/production.txt
+
+# Copy project files
+COPY nola_cameras/ /app/
+
+# Create directories for static and media files
+RUN mkdir -p /app/staticfiles /app/media
+
+# Collect static files
+RUN python manage.py collectstatic --noinput --settings=config.settings.base
+
+# Create non-root user
+RUN useradd -m -u 1000 appuser && chown -R appuser:appuser /app
+USER appuser
+
+# Expose port
+EXPOSE 8000
+
+# Run gunicorn
+CMD ["gunicorn", "--bind", "0.0.0.0:8000", "--workers", "3", "config.wsgi:application"]

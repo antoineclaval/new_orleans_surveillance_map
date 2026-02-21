@@ -1,0 +1,106 @@
+# Podman Compose configuration for NOLA Camera Mapping
+# Usage:
+#   Development: podman-compose -f containers/podman-compose.yml --profile dev up
+#   Production:  podman-compose -f containers/podman-compose.yml --profile prod up -d
+
+version: "3.8"
+
+services:
+  # PostgreSQL with PostGIS
+  db:
+    image: docker.io/postgis/postgis:16-3.4
+    container_name: nola-db
+    environment:
+      POSTGRES_DB: nola_cameras
+      POSTGRES_USER: nola
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nola_dev_password}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nola -d nola_cameras"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  # Django Development Server
+  web-dev:
+    build:
+      context: ..
+      dockerfile: containers/Containerfile.dev
+    container_name: nola-web-dev
+    profiles:
+      - dev
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.development
+      POSTGRES_DB: nola_cameras
+      POSTGRES_USER: nola
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-nola_dev_password}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_DEBUG: "True"
+    volumes:
+      - ../nola_cameras:/app
+      - media_data:/app/media
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    command: >
+      sh -c "python manage.py migrate &&
+             python manage.py runserver 0.0.0.0:8000"
+
+  # Django Production Server (Gunicorn)
+  web:
+    build:
+      context: ..
+      dockerfile: containers/Containerfile
+    container_name: nola-web
+    profiles:
+      - prod
+    environment:
+      DJANGO_SETTINGS_MODULE: config.settings.production
+      DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
+      DJANGO_ALLOWED_HOSTS: ${DJANGO_ALLOWED_HOSTS:-localhost}
+      CSRF_TRUSTED_ORIGINS: ${CSRF_TRUSTED_ORIGINS:-https://localhost}
+      POSTGRES_DB: nola_cameras
+      POSTGRES_USER: nola
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_HOST: db
+      POSTGRES_PORT: 5432
+      DJANGO_DEBUG: "False"
+    volumes:
+      - media_data:/app/media
+      - static_data:/app/staticfiles
+    expose:
+      - "8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # Caddy Reverse Proxy (Production)
+  caddy:
+    image: docker.io/caddy:2
+    container_name: nola-caddy
+    profiles:
+      - prod
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+      - media_data:/srv/media:ro
+      - static_data:/srv/static:ro
+    depends_on:
+      - web
+
+volumes:
+  postgres_data:
+  media_data:
+  static_data:
+  caddy_data:
+  caddy_config:

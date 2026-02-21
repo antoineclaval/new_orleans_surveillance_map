@@ -1,0 +1,8 @@
+-r base.txt
+
+# Development tools
+django-debug-toolbar>=4.2,<5.0
+django-extensions>=3.2,<4.0
+
+# Code quality
+ruff>=0.1,<1.0

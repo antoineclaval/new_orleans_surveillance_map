@@ -1,0 +1,398 @@
+{% extends "base.html" %}
+
+{% block title %}NOLA Camera Map - Surveillance Camera Locations{% endblock %}
+
+{% block extra_css %}
+<style>
+    #map {
+        height: calc(100vh - 56px);
+        width: 100%;
+    }
+
+    /* Filter panel */
+    .filter-panel {
+        position: absolute;
+        top: 70px;
+        right: 10px;
+        z-index: 1000;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        padding: 12px;
+        min-width: 200px;
+    }
+
+    /* Location button */
+    .locate-btn {
+        position: absolute;
+        bottom: 100px;
+        right: 10px;
+        z-index: 1000;
+        width: 40px;
+        height: 40px;
+        background: white;
+        border-radius: 8px;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        border: none;
+    }
+
+    .locate-btn:hover {
+        background: #f3f4f6;
+    }
+
+    /* Camera detail panel - Desktop */
+    @media (min-width: 768px) {
+        .camera-detail-panel {
+            position: absolute;
+            top: 70px;
+            left: 10px;
+            z-index: 1000;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.15);
+            width: 320px;
+            max-height: calc(100vh - 140px);
+            overflow-y: auto;
+        }
+    }
+
+    /* Camera detail panel - Mobile (bottom sheet) */
+    @media (max-width: 767px) {
+        .camera-detail-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            z-index: 1000;
+            background: white;
+            border-radius: 16px 16px 0 0;
+            box-shadow: 0 -2px 20px rgba(0,0,0,0.15);
+            max-height: 60vh;
+            overflow-y: auto;
+        }
+
+        .camera-detail-panel .drag-handle {
+            width: 40px;
+            height: 4px;
+            background: #d1d5db;
+            border-radius: 2px;
+            margin: 8px auto 4px;
+        }
+    }
+
+    /* Loading overlay */
+    .loading-overlay {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(255,255,255,0.8);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 1001;
+    }
+</style>
+{% endblock %}
+
+{% block body %}
+<!-- Navigation (same as base but with filters) -->
+<nav class="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-[1001]">
+    <div class="max-w-7xl mx-auto px-4">
+        <div class="flex justify-between items-center h-14">
+            <a href="{% url 'map' %}" class="flex items-center space-x-2">
+                <svg class="w-6 h-6 text-nola-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                </svg>
+                <span class="font-semibold text-lg hidden sm:inline">NOLA Camera Map</span>
+            </a>
+            <div class="flex items-center space-x-2 sm:space-x-4">
+                <button id="filter-toggle"
+                        class="flex items-center space-x-1 px-3 py-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
+                    </svg>
+                    <span class="hidden sm:inline text-sm">Filters</span>
+                </button>
+                <a href="{% url 'report' %}"
+                   class="bg-nola-purple text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition">
+                    <span class="hidden sm:inline">Report Camera</span>
+                    <span class="sm:hidden">Report</span>
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>
+
+<!-- Map Container -->
+<div x-data="cameraMap()" x-init="init()" class="relative" style="margin-top: 56px;">
+    <!-- Loading Overlay -->
+    <div x-show="loading" class="loading-overlay">
+        <div class="flex flex-col items-center">
+            <svg class="animate-spin h-8 w-8 text-nola-purple mb-2" fill="none" viewBox="0 0 24 24">
+                <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+            </svg>
+            <span class="text-gray-600">Loading cameras...</span>
+        </div>
+    </div>
+
+    <!-- Map -->
+    <div id="map"></div>
+
+    <!-- Filter Panel -->
+    <div x-show="showFilters"
+         x-transition
+         class="filter-panel"
+         @click.away="showFilters = false">
+        <h3 class="font-semibold text-sm text-gray-700 mb-3">Filter Cameras</h3>
+
+        <label class="flex items-center space-x-2 mb-2 cursor-pointer">
+            <input type="checkbox"
+                   x-model="filters.facialRecognition"
+                   @change="applyFilters()"
+                   class="form-checkbox rounded text-nola-purple">
+            <span class="text-sm">Facial Recognition Only</span>
+        </label>
+
+        <label class="flex items-center space-x-2 mb-3 cursor-pointer">
+            <input type="checkbox"
+                   x-model="filters.hasShop"
+                   @change="applyFilters()"
+                   class="form-checkbox rounded text-nola-purple">
+            <span class="text-sm">Private Cameras Only</span>
+        </label>
+
+        <div class="pt-2 border-t border-gray-200">
+            <button @click="resetFilters()"
+                    class="text-sm text-nola-purple hover:text-purple-700">
+                Reset Filters
+            </button>
+        </div>
+    </div>
+
+    <!-- Location Button -->
+    <button @click="locateUser()" class="locate-btn" title="Find my location">
+        <svg class="w-5 h-5 text-gray-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                  d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+        </svg>
+    </button>
+
+    <!-- Camera Detail Panel -->
+    <div x-show="selectedCamera"
+         x-transition
+         class="camera-detail-panel">
+        <div class="md:hidden drag-handle"></div>
+        <div class="p-4">
+            <div class="flex justify-between items-start mb-3">
+                <h3 class="font-semibold text-lg" x-text="selectedCamera?.properties?.cross_road"></h3>
+                <button @click="selectedCamera = null" class="text-gray-400 hover:text-gray-600">
+                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                    </svg>
+                </button>
+            </div>
+
+            <template x-if="selectedCamera?.properties?.street_address">
+                <p class="text-gray-600 text-sm mb-3" x-text="selectedCamera.properties.street_address"></p>
+            </template>
+
+            <div class="flex flex-wrap gap-2 mb-4">
+                <template x-if="selectedCamera?.properties?.facial_recognition">
+                    <span class="badge badge-fr">Facial Recognition</span>
+                </template>
+                <template x-if="selectedCamera?.properties?.associated_shop">
+                    <span class="badge badge-shop" x-text="selectedCamera.properties.associated_shop"></span>
+                </template>
+            </div>
+
+            <template x-if="selectedCamera?.properties?.image">
+                <div class="mb-4">
+                    <img :src="selectedCamera.properties.image"
+                         alt="Camera photo"
+                         class="w-full h-48 object-cover rounded-lg">
+                </div>
+            </template>
+
+            <div class="text-xs text-gray-500">
+                <span>Coordinates: </span>
+                <span x-text="selectedCamera?.geometry?.coordinates[1]?.toFixed(6)"></span>,
+                <span x-text="selectedCamera?.geometry?.coordinates[0]?.toFixed(6)"></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Camera Count -->
+    <div class="absolute bottom-4 left-4 z-[1000] bg-white rounded-lg shadow px-3 py-2 text-sm text-gray-600">
+        <span x-text="cameraCount"></span> cameras
+    </div>
+</div>
+
+<script>
+document.getElementById('filter-toggle').addEventListener('click', function() {
+    Alpine.store('map')?.toggleFilters?.() || document.querySelector('[x-data]').__x.$data.showFilters = !document.querySelector('[x-data]').__x.$data.showFilters;
+});
+</script>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function cameraMap() {
+    return {
+        map: null,
+        markers: null,
+        cameras: [],
+        selectedCamera: null,
+        loading: true,
+        showFilters: false,
+        cameraCount: 0,
+        filters: {
+            facialRecognition: false,
+            hasShop: false
+        },
+
+        init() {
+            // Initialize map centered on New Orleans
+            this.map = L.map('map').setView([29.9511, -90.0715], 12);
+
+            // Add OpenStreetMap tiles
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(this.map);
+
+            // Initialize marker cluster group
+            this.markers = L.markerClusterGroup({
+                maxClusterRadius: 50,
+                spiderfyOnMaxZoom: true,
+                showCoverageOnHover: false,
+                zoomToBoundsOnClick: true
+            });
+            this.map.addLayer(this.markers);
+
+            // Load cameras
+            this.loadCameras();
+
+            // Handle filter toggle button
+            const self = this;
+            document.getElementById('filter-toggle').addEventListener('click', function() {
+                self.showFilters = !self.showFilters;
+            });
+        },
+
+        async loadCameras() {
+            this.loading = true;
+            try {
+                let url = '/api/cameras/';
+                const params = new URLSearchParams();
+
+                if (this.filters.facialRecognition) {
+                    params.append('facial_recognition', 'true');
+                }
+                if (this.filters.hasShop) {
+                    params.append('has_shop', 'true');
+                }
+
+                if (params.toString()) {
+                    url += '?' + params.toString();
+                }
+
+                const response = await fetch(url);
+                const data = await response.json();
+                this.cameras = data.features || [];
+                this.cameraCount = this.cameras.length;
+                this.renderMarkers();
+            } catch (error) {
+                console.error('Failed to load cameras:', error);
+            } finally {
+                this.loading = false;
+            }
+        },
+
+        renderMarkers() {
+            this.markers.clearLayers();
+
+            this.cameras.forEach(camera => {
+                const coords = camera.geometry.coordinates;
+                const props = camera.properties;
+
+                // Create custom icon
+                const iconClass = props.facial_recognition ? 'camera-marker camera-marker-fr' : 'camera-marker';
+                const icon = L.divIcon({
+                    className: iconClass,
+                    iconSize: [24, 24],
+                    iconAnchor: [12, 12]
+                });
+
+                const marker = L.marker([coords[1], coords[0]], { icon: icon });
+
+                // Click handler to show detail panel
+                marker.on('click', () => {
+                    this.selectedCamera = camera;
+                });
+
+                // Popup for quick view
+                const popupContent = `
+                    <div class="camera-popup">
+                        <h3>${props.cross_road}</h3>
+                        ${props.street_address ? `<p class="text-gray-600 text-sm">${props.street_address}</p>` : ''}
+                        <div class="flex gap-1 mt-2">
+                            ${props.facial_recognition ? '<span class="badge badge-fr">FR</span>' : ''}
+                            ${props.associated_shop ? `<span class="badge badge-shop">${props.associated_shop}</span>` : ''}
+                        </div>
+                    </div>
+                `;
+                marker.bindPopup(popupContent);
+
+                this.markers.addLayer(marker);
+            });
+        },
+
+        applyFilters() {
+            this.loadCameras();
+        },
+
+        resetFilters() {
+            this.filters.facialRecognition = false;
+            this.filters.hasShop = false;
+            this.loadCameras();
+        },
+
+        locateUser() {
+            if ('geolocation' in navigator) {
+                navigator.geolocation.getCurrentPosition(
+                    (position) => {
+                        const { latitude, longitude } = position.coords;
+                        this.map.setView([latitude, longitude], 16);
+
+                        // Add a marker for user location
+                        L.marker([latitude, longitude], {
+                            icon: L.divIcon({
+                                className: 'bg-blue-500 rounded-full border-2 border-white shadow-lg',
+                                iconSize: [16, 16],
+                                iconAnchor: [8, 8]
+                            })
+                        }).addTo(this.map).bindPopup('You are here');
+                    },
+                    (error) => {
+                        alert('Unable to get your location. Please enable location services.');
+                    }
+                );
+            } else {
+                alert('Geolocation is not supported by your browser.');
+            }
+        }
+    };
+}
+</script>
+{% endblock %}

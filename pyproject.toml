@@ -1,0 +1,59 @@
+[project]
+name = "nola-camera-mapping"
+version = "1.0.0"
+description = "Web application to map surveillance cameras in New Orleans"
+readme = "README.md"
+requires-python = ">=3.11"
+license = {text = "MIT"}
+authors = [
+    {name = "NOLA Camera Project"}
+]
+keywords = ["django", "gis", "mapping", "surveillance", "new-orleans"]
+
+dependencies = [
+    "Django>=5.0,<5.1",
+    "djangorestframework>=3.14,<4.0",
+    "djangorestframework-gis>=1.0,<2.0",
+    "psycopg[binary]>=3.1,<4.0",
+    "Pillow>=10.0,<11.0",
+    "whitenoise>=6.6,<7.0",
+    "django-import-export>=3.3,<4.0",
+]
+
+[project.optional-dependencies]
+dev = [
+    "django-debug-toolbar>=4.2,<5.0",
+    "django-extensions>=3.2,<4.0",
+    "ruff>=0.1,<1.0",
+]
+prod = [
+    "gunicorn>=21.0,<22.0",
+]
+
+[tool.uv]
+dev-dependencies = [
+    "django-debug-toolbar>=4.2,<5.0",
+    "django-extensions>=3.2,<4.0",
+    "ruff>=0.1,<1.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # Pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "C4",  # flake8-comprehensions
+    "UP",  # pyupgrade
+]
+ignore = [
+    "E501",  # line too long (handled by formatter)
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["cameras", "config"]

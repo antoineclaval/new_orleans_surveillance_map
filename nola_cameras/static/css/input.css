@@ -1,0 +1,26 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Custom component classes */
+@layer components {
+  .form-input {
+    @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nola-purple focus:border-transparent outline-none transition;
+  }
+
+  .form-checkbox {
+    @apply w-5 h-5 text-nola-purple border-gray-300 rounded focus:ring-nola-purple;
+  }
+
+  .form-file {
+    @apply w-full text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-nola-purple file:text-white hover:file:bg-purple-700 file:cursor-pointer;
+  }
+
+  .btn-primary {
+    @apply bg-nola-purple text-white px-4 py-2 rounded-lg font-medium hover:bg-purple-700 transition;
+  }
+
+  .btn-secondary {
+    @apply bg-gray-100 text-gray-700 px-4 py-2 rounded-lg font-medium hover:bg-gray-200 transition;
+  }
+}

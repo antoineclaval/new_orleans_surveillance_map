@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+
+{% block title %}Report Submitted - NOLA Camera Map{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto px-4 py-16 text-center">
+    <div class="bg-green-100 rounded-full w-20 h-20 flex items-center justify-center mx-auto mb-6">
+        <svg class="w-10 h-10 text-green-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+        </svg>
+    </div>
+
+    <h1 class="text-2xl font-bold text-gray-900 mb-4">Thank You!</h1>
+
+    <p class="text-gray-600 mb-8">
+        Your camera report has been submitted successfully.
+        Our team will review it and, once verified, it will appear on the map.
+    </p>
+
+    <div class="space-y-4">
+        <a href="{% url 'map' %}"
+           class="inline-block bg-nola-purple text-white px-6 py-3 rounded-lg font-medium hover:bg-purple-700 transition">
+            View Camera Map
+        </a>
+
+        <div>
+            <a href="{% url 'report' %}"
+               class="text-nola-purple hover:text-purple-700 font-medium">
+                Report Another Camera
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}NOLA Camera Map{% endblock %}</title>
+
+    <!-- Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        nola: {
+                            purple: '#6b46c1',
+                            gold: '#d69e2e',
+                        }
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- Leaflet CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossorigin="">
+
+    <!-- Leaflet MarkerCluster CSS -->
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.Default.css">
+
+    <style>
+        /* Custom styles */
+        .leaflet-container {
+            font-family: inherit;
+        }
+
+        /* Form input styles */
+        .form-input {
+            @apply w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-nola-purple focus:border-transparent outline-none transition;
+        }
+
+        .form-checkbox {
+            @apply w-5 h-5 text-nola-purple border-gray-300 rounded focus:ring-nola-purple;
+        }
+
+        .form-file {
+            @apply w-full text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-nola-purple file:text-white hover:file:bg-purple-700 file:cursor-pointer;
+        }
+
+        /* Camera marker icons */
+        .camera-marker {
+            background-color: #6b46c1;
+            border: 2px solid white;
+            border-radius: 50%;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        .camera-marker-fr {
+            background-color: #dc2626;
+        }
+
+        /* Map popup styles */
+        .camera-popup {
+            min-width: 200px;
+        }
+
+        .camera-popup h3 {
+            font-weight: 600;
+            font-size: 1rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .camera-popup .badge {
+            display: inline-block;
+            padding: 2px 8px;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+
+        .camera-popup .badge-fr {
+            background-color: #fee2e2;
+            color: #dc2626;
+        }
+
+        .camera-popup .badge-shop {
+            background-color: #e0e7ff;
+            color: #4f46e5;
+        }
+
+        /* Bottom sheet for mobile */
+        .bottom-sheet {
+            transform: translateY(100%);
+            transition: transform 0.3s ease-out;
+        }
+
+        .bottom-sheet.open {
+            transform: translateY(0);
+        }
+
+        /* Cluster markers */
+        .marker-cluster-small {
+            background-color: rgba(107, 70, 193, 0.6);
+        }
+        .marker-cluster-small div {
+            background-color: rgba(107, 70, 193, 0.8);
+        }
+        .marker-cluster-medium {
+            background-color: rgba(107, 70, 193, 0.6);
+        }
+        .marker-cluster-medium div {
+            background-color: rgba(107, 70, 193, 0.8);
+        }
+        .marker-cluster-large {
+            background-color: rgba(107, 70, 193, 0.6);
+        }
+        .marker-cluster-large div {
+            background-color: rgba(107, 70, 193, 0.8);
+        }
+        .marker-cluster div {
+            color: white;
+            font-weight: bold;
+        }
+    </style>
+
+    {% block extra_css %}{% endblock %}
+</head>
+<body class="bg-gray-50 text-gray-900">
+    {% block body %}
+    <!-- Navigation -->
+    <nav class="bg-white shadow-sm border-b border-gray-200 relative z-[1000]">
+        <div class="max-w-7xl mx-auto px-4">
+            <div class="flex justify-between items-center h-14">
+                <a href="{% url 'map' %}" class="flex items-center space-x-2">
+                    <svg class="w-6 h-6 text-nola-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
+                    </svg>
+                    <span class="font-semibold text-lg">NOLA Camera Map</span>
+                </a>
+                <div class="flex items-center space-x-4">
+                    <a href="{% url 'report' %}"
+                       class="bg-nola-purple text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition">
+                        Report Camera
+                    </a>
+                </div>
+            </div>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main>
+        {% block content %}{% endblock %}
+    </main>
+    {% endblock %}
+
+    <!-- Alpine.js -->
+    <script defer src="https://unpkg.com/alpinejs@3.x.x/dist/cdn.min.js"></script>
+
+    <!-- Leaflet JS -->
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"
+            integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo="
+            crossorigin=""></script>
+
+    <!-- Leaflet MarkerCluster JS -->
+    <script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "name": "nola-camera-mapping",
+  "version": "1.0.0",
+  "description": "Tailwind CSS build for NOLA Camera Mapping",
+  "scripts": {
+    "build:css": "tailwindcss -i ./nola_cameras/static/css/input.css -o ./nola_cameras/static/css/main.css --minify",
+    "watch:css": "tailwindcss -i ./nola_cameras/static/css/input.css -o ./nola_cameras/static/css/main.css --watch"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.0"
+  }
+}
