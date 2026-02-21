@@ -811,6 +811,12 @@ prep_step_validate_env() {
 prep_step_dns() {
     load_env
 
+    # If DOMAIN is a bare IPv4 or IPv6 address, skip DNS verification entirely
+    if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$DOMAIN" =~ ^[0-9a-fA-F:]+$ ]]; then
+        print_status "DOMAIN is an IP address — skipping DNS check"
+        return 0
+    fi
+
     local public_ip
     public_ip="$(curl -sf https://ifconfig.me)" || {
         print_error "Could not determine server public IP (curl ifconfig.me failed)"

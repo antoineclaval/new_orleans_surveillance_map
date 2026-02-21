@@ -13,7 +13,6 @@ A web application to map surveillance cameras in New Orleans with three user typ
 - Mobile-responsive design with bottom sheet for camera details
 - Public submission form with map-based location picker
 - Django admin with map widget, bulk actions, and CSV/GeoJSON export
-- Spam prevention via honeypot field
 - Containerized deployment with Podman
 
 ## Tech Stack
@@ -64,12 +63,6 @@ sudo apt install podman podman-compose
 sudo apt install gdal-bin libgdal-dev libgeos-dev libproj-dev
 
 # UV package manager
-curl -LsSf https://astral.sh/uv/install.sh | sh
-```
-
-**macOS:**
-```bash
-brew install podman podman-compose gdal geos proj
 curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
@@ -128,25 +121,10 @@ podman system connection default host
 podman ps
 ```
 
-#### Daily Workflow
-
-```bash
-# Enter your development toolbox
-toolbox enter project-nola-mapping
-
-# Navigate to project (your home directory is shared)
-cd ~/path/to/project-nola-mapping
-
-# First time setup
-./scripts/setup.sh local
-
-# Start development server
-./scripts/setup.sh run
-```
 
 ---
 
-### Option 1: Local Development (Recommended)
+### Option 1: Local Development
 
 This mode runs Django directly on your machine with a containerized PostgreSQL database. It provides the best developer experience with fast iteration, full IDE integration, and easy debugging.
 
@@ -228,97 +206,12 @@ Access at http://localhost:8000
 
 ---
 
-## Production Deployment
-
-### 1. Provision the Server
-
-In [Hetzner Cloud](https://console.hetzner.cloud/), create a new server:
-
-- **Type:** CX11 or larger
-- **OS:** Ubuntu 22.04 or 24.04 LTS
-- **SSH key:** add your public key during creation
-
-Note the public IP address shown after creation.
-
-### 2. Configure DNS
-
-In your DNS provider, add an **A record** pointing your domain to the VPS IP:
-
-```
-yourdomain.com  →  <your-vps-ip>
-```
-
-> **Important:** Caddy automatically obtains a TLS certificate via Let's Encrypt, which requires DNS to resolve correctly. Wait for DNS propagation (a few minutes to an hour) before running the deploy step, or Caddy will fail to issue the cert.
-
 ### 3. Initial Server Setup
 
-```bash
-# SSH into the server
-ssh root@<your-vps-ip>
+Use /scripts/cloud-init.yml and feed it to your VPS provider.
 
-# Update system packages
-apt update && apt upgrade -y
 
-# Install dependencies
-apt install -y git podman podman-compose
-
-# Configure firewall
-ufw allow OpenSSH
-ufw allow 80/tcp
-ufw allow 443/tcp
-ufw enable
-```
-
-### 4. Clone the Repository
-
-```bash
-git clone <repo-url> /opt/project-nola-mapping
-cd /opt/project-nola-mapping
-```
-
-### 5. Configure Environment
-
-```bash
-cp .env .env.backup   # back up the generated defaults
-```
-
-Edit `.env` and set the following production values. The last four lines are commented out in the default file — uncomment and fill them in:
-
-```bash
-# Generate a strong secret key
-python3 -c "import secrets; print(secrets.token_urlsafe(50))"
-```
-
-```env
-DJANGO_SECRET_KEY=<paste-generated-key>
-DJANGO_ALLOWED_HOSTS=yourdomain.com
-CSRF_TRUSTED_ORIGINS=https://yourdomain.com
-DJANGO_DEBUG=False
-
-POSTGRES_PASSWORD=<strong-random-password>
-
-# Uncomment and set for production (Caddy uses this for TLS):
-DOMAIN=yourdomain.com
-```
-
-### 6. Deploy
-
-```bash
-./scripts/setup.sh prod
-```
-
-This builds and starts three containers:
-- `nola-db` — PostgreSQL/PostGIS
-- `nola-web` — Django with Gunicorn
-- `nola-caddy` — Caddy reverse proxy (auto-HTTPS via Let's Encrypt)
-
-Verify all three are running:
-
-```bash
-podman ps
-```
-
-### 7. Create Admin User
+### 4. Create Admin User
 
 ```bash
 ./scripts/setup.sh superuser
