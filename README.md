@@ -1,4 +1,4 @@
-# NOLA Camera Mapping
+# New Orleans Camera Mapping
 
 A web application to map surveillance cameras in New Orleans with three user types:
 - **Read-only viewers**: Browse the camera map
@@ -22,8 +22,8 @@ A web application to map surveillance cameras in New Orleans with three user typ
 |-----------|------------|
 | Backend | Django 5.x, Django REST Framework, GeoDjango |
 | Database | PostgreSQL 16 with PostGIS 3.4 |
-| Frontend | Leaflet.js, Alpine.js, Tailwind CSS (CDN) |
-| Package Manager | [UV](https://github.com/astral-sh/uv) (fast Python package installer) |
+| Frontend | Leaflet.js, Alpine.js, Tailwind CSS |
+| Package Manager | [UV](https://github.com/astral-sh/uv)|
 | Containers | Podman, podman-compose |
 | Reverse Proxy | Caddy (production) |
 
@@ -74,10 +74,6 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 ```
 
 ---
-
-### Fedora Silverblue / Kinoite
-
-Silverblue has an immutable base OS, so development dependencies should be installed inside a [toolbox](https://containertoolbx.org/) container. Podman is pre-installed and works great.
 
 #### One-Time Setup
 
@@ -148,16 +144,6 @@ cd ~/path/to/project-nola-mapping
 ./scripts/setup.sh run
 ```
 
-#### Why Toolbox?
-
-| Benefit | Description |
-|---------|-------------|
-| Mutable environment | Install any packages without layering |
-| Shared home directory | Your code, SSH keys, and configs are available |
-| Host Podman access | Containers run on host, not nested |
-| Isolated | Won't affect your base system |
-| Disposable | Easy to recreate if something breaks |
-
 ---
 
 ### Option 1: Local Development (Recommended)
@@ -215,16 +201,6 @@ uv run python manage.py runserver
 
 This adds 13 sample cameras around New Orleans (10 vetted, 2 pending, 1 rejected) for testing.
 
-#### Daily Workflow
-
-```bash
-# Start your day - database auto-starts if needed
-./scripts/setup.sh run
-
-# When done for the day (optional - saves resources)
-./scripts/setup.sh db-stop
-```
-
 #### Other Useful Commands
 
 ```bash
@@ -252,140 +228,13 @@ Access at http://localhost:8000
 
 ---
 
-### IDE Setup
-
-#### VS Code
-
-The project uses UV for package management. To get IDE features working:
-
-1. Open the project in VS Code
-2. Install the Python extension
-3. Select the interpreter: `.venv/bin/python`
-4. Install recommended extensions for Django/Python
-
-Create `.vscode/settings.json`:
-```json
-{
-  "python.defaultInterpreterPath": "${workspaceFolder}/.venv/bin/python",
-  "python.analysis.extraPaths": ["${workspaceFolder}/nola_cameras"],
-  "[python]": {
-    "editor.defaultFormatter": "charliermarsh.ruff"
-  }
-}
-```
-
-#### PyCharm
-
-1. Open project settings
-2. Set Python interpreter to `.venv/bin/python`
-3. Mark `nola_cameras` as Sources Root
-
----
-
-### Project Structure
-
-```
-project-nola-mapping/
-├── nola_cameras/                 # Django project root
-│   ├── manage.py
-│   ├── config/                   # Project configuration
-│   │   ├── settings/
-│   │   │   ├── base.py          # Shared settings
-│   │   │   ├── development.py   # Dev overrides
-│   │   │   └── production.py    # Production settings
-│   │   ├── urls.py
-│   │   └── wsgi.py
-│   ├── cameras/                  # Main application
-│   │   ├── models.py            # Camera model
-│   │   ├── views.py             # Page views
-│   │   ├── api.py               # REST API endpoints
-│   │   ├── serializers.py       # DRF serializers
-│   │   ├── forms.py             # Camera report form
-│   │   ├── admin.py             # Admin customization
-│   │   ├── urls.py              # App URL routes
-│   │   └── api_urls.py          # API URL routes
-│   ├── templates/
-│   │   ├── base.html            # Base template
-│   │   ├── map.html             # Main map view
-│   │   ├── report.html          # Submission form
-│   │   └── report_success.html  # Success page
-│   └── static/
-│       └── css/
-├── containers/
-│   ├── Containerfile            # Production image
-│   ├── Containerfile.dev        # Development image
-│   ├── podman-compose.yml       # Container orchestration
-│   └── Caddyfile                # Reverse proxy config
-├── scripts/
-│   ├── setup.sh                 # Setup and management script
-│   └── seed_data.py             # Sample data loader
-├── requirements/                 # Legacy pip requirements
-│   ├── base.txt
-│   ├── development.txt
-│   └── production.txt
-├── pyproject.toml               # UV/Python project config
-├── uv.lock                      # Locked dependencies
-├── .python-version              # Python version for UV
-└── .env                         # Environment variables (generated)
-```
-
----
-
-## API Reference
-
-### GET /api/cameras/
-
-Returns all vetted cameras as GeoJSON.
-
-**Query Parameters:**
-
-| Parameter | Values | Description |
-|-----------|--------|-------------|
-| `facial_recognition` | `true`/`false` | Filter by FR capability |
-| `has_shop` | `true`/`false` | Filter by private/public |
-
-**Example:**
-```bash
-curl "http://localhost:8000/api/cameras/?facial_recognition=true"
-```
-
-**Response:**
-```json
-{
-  "type": "FeatureCollection",
-  "features": [
-    {
-      "type": "Feature",
-      "geometry": {
-        "type": "Point",
-        "coordinates": [-90.0686, 29.9527]
-      },
-      "properties": {
-        "id": "550e8400-e29b-41d4-a716-446655440000",
-        "cross_road": "Canal St & Bourbon St",
-        "street_address": "100 Canal St",
-        "facial_recognition": true,
-        "associated_shop": "",
-        "image": null
-      }
-    }
-  ]
-}
-```
-
-### GET /api/cameras/{id}/
-
-Returns details for a single camera.
-
----
-
-## Production Deployment (Hetzner VPS)
+## Production Deployment
 
 ### 1. Provision the Server
 
 In [Hetzner Cloud](https://console.hetzner.cloud/), create a new server:
 
-- **Type:** CX22 or larger
+- **Type:** CX11 or larger
 - **OS:** Ubuntu 22.04 or 24.04 LTS
 - **SSH key:** add your public key during creation
 
