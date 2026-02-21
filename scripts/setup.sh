@@ -185,8 +185,6 @@ start_local() {
     echo "  • Containerized PostgreSQL/PostGIS database"
     echo "  • Django development server running directly on your machine"
     echo ""
-    echo "Benefits: Fast iteration, IDE integration, easy debugging"
-    echo ""
 
     check_uv
     check_podman
