@@ -6,6 +6,9 @@
 #   ./scripts/setup.sh dev      # Full containerized development stack
 #   ./scripts/setup.sh prod     # Production deployment
 #
+# Server Setup:
+#   ./scripts/setup.sh prepare-prod  # Full VPS setup (resumable, checkpointed)
+#
 # See README.md for detailed documentation.
 
 set -e
@@ -20,6 +23,9 @@ NC='\033[0m' # No Color
 # Project root directory
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$PROJECT_ROOT"
+
+# State file for prepare_prod checkpointing
+PREPARE_STATE_FILE="$PROJECT_ROOT/.prepare_prod_state"
 
 # Function to print colored output
 print_status() {
@@ -558,6 +564,231 @@ clean_all() {
 }
 
 # =============================================================================
+# prepare_prod — Checkpoint Helpers
+# =============================================================================
+
+prep_step_done() { [ -f "$PREPARE_STATE_FILE" ] && grep -qxF "$1" "$PREPARE_STATE_FILE"; }
+prep_mark_done() { echo "$1" >> "$PREPARE_STATE_FILE"; }
+
+run_prep_step() {
+    local num="$1" total="$2" step_id="$3" step_desc="$4" step_fn="$5"
+    if prep_step_done "$step_id"; then
+        print_info "[$num/$total] $step_desc — already done, skipping"
+        return 0
+    fi
+    echo ""
+    echo -e "${BLUE}━━━ [$num/$total] $step_desc ━━━${NC}"
+    echo ""
+    "$step_fn"
+    prep_mark_done "$step_id"
+    print_status "[$num/$total] $step_desc — done"
+}
+
+# =============================================================================
+# prepare_prod — Step Functions
+# =============================================================================
+
+prep_step_system_deps() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root. Re-run as root or with sudo."
+        exit 1
+    fi
+    apt-get update -y
+    apt-get upgrade -y
+    apt-get install -y git podman podman-compose
+}
+
+prep_step_firewall() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root. Re-run as root or with sudo."
+        exit 1
+    fi
+    ufw allow OpenSSH
+    ufw allow 80
+    ufw allow 443
+    ufw --force enable
+    print_status "Firewall configured: SSH, HTTP, HTTPS allowed"
+}
+
+prep_step_env() {
+    create_env_file
+    echo ""
+    print_info "Edit .env now — set the following production values:"
+    echo "  DOMAIN=yourdomain.com"
+    echo "  DJANGO_ALLOWED_HOSTS=yourdomain.com"
+    echo "  CSRF_TRUSTED_ORIGINS=https://yourdomain.com"
+    echo "  DJANGO_DEBUG=False"
+    echo "  (DJANGO_SECRET_KEY and POSTGRES_PASSWORD are already generated)"
+    echo ""
+    read -rp "Press Enter when .env is ready to continue... "
+}
+
+prep_step_validate_env() {
+    load_env
+
+    local ok=1
+
+    if [ -z "$DJANGO_SECRET_KEY" ]; then
+        print_error "DJANGO_SECRET_KEY is not set in .env"
+        ok=0
+    fi
+
+    if [ -z "$DOMAIN" ] || [ "$DOMAIN" = "yourdomain.com" ]; then
+        print_error "DOMAIN is not set or still set to 'yourdomain.com' in .env"
+        ok=0
+    fi
+
+    if [ "$DJANGO_DEBUG" != "False" ]; then
+        print_error "DJANGO_DEBUG must be 'False' in .env for production (got: '${DJANGO_DEBUG}')"
+        ok=0
+    fi
+
+    if [ -z "$POSTGRES_PASSWORD" ]; then
+        print_error "POSTGRES_PASSWORD is not set in .env"
+        ok=0
+    fi
+
+    if [ "$ok" -eq 0 ]; then
+        print_error "Fix the above issues in .env, then re-run: ./scripts/setup.sh prepare-prod"
+        exit 1
+    fi
+
+    print_status "All required environment variables look good"
+}
+
+prep_step_dns() {
+    load_env
+
+    local public_ip
+    public_ip="$(curl -sf https://ifconfig.me)" || {
+        print_error "Could not determine server public IP (curl ifconfig.me failed)"
+        exit 1
+    }
+
+    local resolved_ip
+    resolved_ip="$(getent hosts "$DOMAIN" | awk '{ print $1 }' | head -1)" || true
+
+    if [ -z "$resolved_ip" ]; then
+        print_error "DNS: '$DOMAIN' does not resolve to any IP address."
+        print_error "Point an A record for '$DOMAIN' to this server's IP: $public_ip"
+        exit 1
+    fi
+
+    if [ "$resolved_ip" != "$public_ip" ]; then
+        print_error "DNS mismatch: '$DOMAIN' resolves to $resolved_ip but this server's IP is $public_ip"
+        print_error "Update the A record for '$DOMAIN' to point to $public_ip"
+        exit 1
+    fi
+
+    print_status "DNS OK: $DOMAIN → $public_ip"
+}
+
+prep_step_deploy() {
+    start_prod
+}
+
+prep_step_systemd() {
+    if [ "$(id -u)" -ne 0 ]; then
+        print_error "This step requires root. Re-run as root or with sudo."
+        exit 1
+    fi
+
+    local compose_bin
+    compose_bin="$(command -v podman-compose)" || {
+        print_error "podman-compose not found in PATH"
+        exit 1
+    }
+
+    cat > /etc/systemd/system/nola-cameras.service << EOF
+[Unit]
+Description=NOLA Camera Mapping
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=$PROJECT_ROOT
+ExecStart=$compose_bin -f containers/podman-compose.yml --profile prod up -d
+ExecStop=$compose_bin -f containers/podman-compose.yml --profile prod down
+EnvironmentFile=$PROJECT_ROOT/.env
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+    systemctl daemon-reload
+    systemctl enable nola-cameras.service
+    print_status "systemd service installed and enabled: nola-cameras.service"
+}
+
+prep_step_verify() {
+    load_env
+
+    print_info "Running containers:"
+    podman ps
+
+    echo ""
+    print_info "Waiting for https://$DOMAIN/ to respond (up to 60s — TLS cert may still be provisioning)..."
+
+    local i=0
+    while [ $i -lt 12 ]; do
+        if curl -sf "https://$DOMAIN/" > /dev/null 2>&1; then
+            print_status "https://$DOMAIN/ is responding — deployment verified!"
+            return 0
+        fi
+        i=$((i + 1))
+        echo "  Attempt $i/12 — not ready yet, waiting 5s..."
+        sleep 5
+    done
+
+    print_warning "https://$DOMAIN/ did not respond after 60s."
+    print_warning "This is normal if Caddy is still provisioning the TLS certificate."
+    print_warning "Check again in a minute: curl -I https://$DOMAIN/"
+}
+
+# =============================================================================
+# prepare_prod — Orchestrator
+# =============================================================================
+
+prepare_prod() {
+    print_header "Hetzner VPS — Production Preparation"
+
+    if [ -f "$PREPARE_STATE_FILE" ]; then
+        print_info "Resuming. Completed steps:"
+        while IFS= read -r s; do echo "  [✓] $s"; done < "$PREPARE_STATE_FILE"
+        echo ""
+    fi
+
+    trap 'print_error "Step failed. Fix the issue above, then re-run: ./scripts/setup.sh prepare-prod"' ERR
+
+    local steps=(
+        "system_deps|Install system dependencies|prep_step_system_deps"
+        "firewall|Configure firewall (ufw)|prep_step_firewall"
+        "env|Configure environment (.env)|prep_step_env"
+        "validate_env|Validate environment variables|prep_step_validate_env"
+        "dns|Verify DNS resolution|prep_step_dns"
+        "deploy|Deploy containers|prep_step_deploy"
+        "systemd|Install systemd auto-start service|prep_step_systemd"
+        "verify|Verify deployment|prep_step_verify"
+    )
+    local total=${#steps[@]}
+    local num=0
+    for entry in "${steps[@]}"; do
+        num=$((num + 1))
+        IFS='|' read -r step_id step_desc step_fn <<< "$entry"
+        run_prep_step "$num" "$total" "$step_id" "$step_desc" "$step_fn"
+    done
+
+    print_header "Production setup complete!"
+    echo "  App:   https://${DOMAIN}"
+    echo "  Admin: https://${DOMAIN}/admin/"
+    echo ""
+    echo "Next: ./scripts/setup.sh superuser"
+    echo "Reset: rm $PREPARE_STATE_FILE"
+}
+
+# =============================================================================
 # Help
 # =============================================================================
 
@@ -588,14 +819,20 @@ show_help() {
     echo "  seed                  Load sample camera data"
     echo "  superuser             Create Django admin superuser"
     echo ""
+    echo -e "${BLUE}Server Setup Commands:${NC}"
+    echo "  prepare-prod    Full VPS setup from scratch (resumable, checkpointed)"
+    echo "                  Re-run after fixing any failure to resume from that step"
+    echo "                  Reset progress: rm .prepare_prod_state"
+    echo ""
     echo -e "${BLUE}Cleanup Commands:${NC}"
     echo "  stop        Stop all running containers"
     echo "  clean       Remove containers, volumes, and venv"
     echo ""
     echo -e "${BLUE}Examples:${NC}"
-    echo "  ./scripts/setup.sh local      # Set up local development"
-    echo "  ./scripts/setup.sh run        # Start dev server"
-    echo "  ./scripts/setup.sh seed       # Add sample cameras"
+    echo "  ./scripts/setup.sh local        # Set up local development"
+    echo "  ./scripts/setup.sh run          # Start dev server"
+    echo "  ./scripts/setup.sh seed         # Add sample cameras"
+    echo "  ./scripts/setup.sh prepare-prod # Full production VPS setup"
     echo ""
 }
 
@@ -642,6 +879,9 @@ case "${1:-help}" in
         ;;
     clean)
         clean_all
+        ;;
+    prepare-prod)
+        prepare_prod
         ;;
     help|*)
         show_help

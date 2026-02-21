@@ -379,14 +379,64 @@ Returns details for a single camera.
 
 ---
 
-## Production Deployment
+## Production Deployment (Hetzner VPS)
 
-### 1. Configure Environment
+### 1. Provision the Server
 
-Edit `.env` with production values:
+In [Hetzner Cloud](https://console.hetzner.cloud/), create a new server:
+
+- **Type:** CX22 or larger
+- **OS:** Ubuntu 22.04 or 24.04 LTS
+- **SSH key:** add your public key during creation
+
+Note the public IP address shown after creation.
+
+### 2. Configure DNS
+
+In your DNS provider, add an **A record** pointing your domain to the VPS IP:
+
+```
+yourdomain.com  →  <your-vps-ip>
+```
+
+> **Important:** Caddy automatically obtains a TLS certificate via Let's Encrypt, which requires DNS to resolve correctly. Wait for DNS propagation (a few minutes to an hour) before running the deploy step, or Caddy will fail to issue the cert.
+
+### 3. Initial Server Setup
 
 ```bash
-# Generate a new secret key
+# SSH into the server
+ssh root@<your-vps-ip>
+
+# Update system packages
+apt update && apt upgrade -y
+
+# Install dependencies
+apt install -y git podman podman-compose
+
+# Configure firewall
+ufw allow OpenSSH
+ufw allow 80/tcp
+ufw allow 443/tcp
+ufw enable
+```
+
+### 4. Clone the Repository
+
+```bash
+git clone <repo-url> /opt/project-nola-mapping
+cd /opt/project-nola-mapping
+```
+
+### 5. Configure Environment
+
+```bash
+cp .env .env.backup   # back up the generated defaults
+```
+
+Edit `.env` and set the following production values. The last four lines are commented out in the default file — uncomment and fill them in:
+
+```bash
+# Generate a strong secret key
 python3 -c "import secrets; print(secrets.token_urlsafe(50))"
 ```
 
@@ -395,26 +445,98 @@ DJANGO_SECRET_KEY=<paste-generated-key>
 DJANGO_ALLOWED_HOSTS=yourdomain.com
 CSRF_TRUSTED_ORIGINS=https://yourdomain.com
 DJANGO_DEBUG=False
+
+POSTGRES_PASSWORD=<strong-random-password>
+
+# Uncomment and set for production (Caddy uses this for TLS):
 DOMAIN=yourdomain.com
-POSTGRES_PASSWORD=<strong-password>
 ```
 
-### 2. Deploy
+### 6. Deploy
 
 ```bash
 ./scripts/setup.sh prod
 ```
 
-This starts:
-- PostgreSQL/PostGIS
-- Django with Gunicorn
-- Caddy reverse proxy (auto-HTTPS)
+This builds and starts three containers:
+- `nola-db` — PostgreSQL/PostGIS
+- `nola-web` — Django with Gunicorn
+- `nola-caddy` — Caddy reverse proxy (auto-HTTPS via Let's Encrypt)
 
-### 3. Create Admin User
+Verify all three are running:
+
+```bash
+podman ps
+```
+
+### 7. Create Admin User
 
 ```bash
 ./scripts/setup.sh superuser
 ```
+
+### 8. Auto-start on Reboot
+
+Containers do not restart automatically after a reboot unless you create a systemd service. Create the unit file:
+
+```bash
+cat > /etc/systemd/system/nola-cameras.service << 'EOF'
+[Unit]
+Description=NOLA Camera Mapping
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+WorkingDirectory=/opt/project-nola-mapping
+ExecStart=/usr/bin/podman-compose -f containers/podman-compose.yml --profile prod up -d
+ExecStop=/usr/bin/podman-compose -f containers/podman-compose.yml --profile prod down
+EnvironmentFile=/opt/project-nola-mapping/.env
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+Enable and start it:
+
+```bash
+systemctl daemon-reload
+systemctl enable --now nola-cameras.service
+```
+
+Test the reboot path:
+
+```bash
+reboot
+# After reconnecting:
+ssh root@<your-vps-ip>
+podman ps   # all three containers should be running
+```
+
+### 9. Verify the Deployment
+
+```bash
+# All three containers running
+podman ps
+
+# TLS and HTTP response
+curl -I https://yourdomain.com
+
+# Admin interface reachable
+curl -I https://yourdomain.com/admin/
+```
+
+### 10. Updating the Application
+
+```bash
+cd /opt/project-nola-mapping
+git pull
+./scripts/setup.sh prod
+```
+
+The deploy command rebuilds the web image and restarts containers with zero downtime for the database.
 
 ---
 
