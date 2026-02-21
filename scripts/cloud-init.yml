@@ -1,0 +1,47 @@
+#cloud-config
+# Poststeps : 
+#   ssh deploy@<server-ip>
+#   cd /opt/new_orleans_surveillance_map
+#   sudo ./scripts/setup.sh prepare-prod
+
+timezone: America/Chicago
+package_update: true
+package_upgrade: true
+
+packages:
+  - podman
+  - podman-compose
+  - git
+  - ufw
+
+users:
+  - name: deploy
+    shell: /bin/bash
+    groups: [sudo]
+    sudo: "ALL=(ALL) NOPASSWD:ALL"
+
+runcmd:
+  # Copy root's SSH key to deploy user
+  - mkdir -p /home/deploy/.ssh
+  - cp /root/.ssh/authorized_keys /home/deploy/.ssh/authorized_keys
+  - chown -R deploy:deploy /home/deploy/.ssh
+  - chmod 700 /home/deploy/.ssh
+  - chmod 600 /home/deploy/.ssh/authorized_keys
+
+  # App directory owned by deploy
+  - mkdir -p /opt/new_orleans_surveillance_map
+  - chown deploy:deploy /opt/new_orleans_surveillance_map
+
+  # Enable linger so deploy's containers survive logout
+  - loginctl enable-linger deploy
+
+  # Firewall — SSH + HTTP + HTTPS
+  - ufw allow 22
+  - ufw allow 80
+  - ufw allow 443
+  - ufw --force enable
+
+  # Clone repo as deploy user
+  - sudo -u deploy git clone https://github.com/antoineclaval/new_orleans_surveillance_map /opt/new_orleans_surveillance_map
+
+  - touch /opt/new_orleans_surveillance_map/.cloud-init-done
