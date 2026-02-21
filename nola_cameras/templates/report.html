@@ -42,7 +42,22 @@
             <label class="block text-sm font-medium text-gray-700 mb-2">
                 Camera Location <span class="text-red-500">*</span>
             </label>
-            <p class="text-sm text-gray-500 mb-2">Click on the map to set the camera location</p>
+            <div class="flex items-center gap-3 mb-2">
+                <p class="text-sm text-gray-500">Click on the map to set the camera location</p>
+                <button type="button"
+                        @click="useMyLocation()"
+                        :disabled="locating"
+                        class="flex items-center gap-1.5 text-sm px-3 py-1.5 rounded-lg border border-nola-purple text-nola-purple hover:bg-purple-50 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                    <svg class="w-4 h-4" :class="{ 'animate-spin': locating }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span x-text="locating ? 'Detecting...' : 'Detect where I am'"></span>
+                </button>
+            </div>
+            <p x-show="locationError" x-text="locationError" class="text-sm text-red-500 mb-2"></p>
             <div id="location-map" class="border border-gray-300"></div>
             <input type="hidden" name="latitude" x-model="latitude" id="id_latitude">
             <input type="hidden" name="longitude" x-model="longitude" id="id_longitude">
@@ -251,18 +266,24 @@ function reportForm() {
         },
 
         useMyLocation() {
-            if ('geolocation' in navigator) {
-                navigator.geolocation.getCurrentPosition(
-                    (position) => {
-                        const { latitude, longitude } = position.coords;
-                        this.map.setView([latitude, longitude], 17);
-                        this.setLocation(latitude, longitude);
-                    },
-                    () => {
-                        alert('Unable to get your location. Please click on the map to set the location.');
-                    }
-                );
+            if (!('geolocation' in navigator)) {
+                this.locationError = 'Geolocation is not supported by your browser.';
+                return;
             }
+            this.locating = true;
+            this.locationError = null;
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    this.locating = false;
+                    const { latitude, longitude } = position.coords;
+                    this.map.setView([latitude, longitude], 17);
+                    this.setLocation(latitude, longitude);
+                },
+                () => {
+                    this.locating = false;
+                    this.locationError = 'Unable to get your location. Enable location permissions or click the map.';
+                }
+            );
         },
 
         previewImage(event) {
