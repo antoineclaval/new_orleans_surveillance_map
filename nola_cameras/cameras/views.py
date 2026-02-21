@@ -7,6 +7,8 @@ from django.views.generic import FormView, TemplateView
 
 from .forms import CameraReportForm
 
+_MOBILE_UA_KEYWORDS = ("mobile", "android", "iphone", "ipad", "ipod")
+
 
 class MapView(TemplateView):
     """
@@ -24,6 +26,12 @@ class CameraReportView(FormView):
     template_name = "report.html"
     form_class = CameraReportForm
     success_url = reverse_lazy("report-success")
+
+    def get_template_names(self):
+        ua = self.request.META.get("HTTP_USER_AGENT", "").lower()
+        if any(kw in ua for kw in _MOBILE_UA_KEYWORDS):
+            return ["report_mobile.html"]
+        return [self.template_name]
 
     def form_valid(self, form):
         form.save()

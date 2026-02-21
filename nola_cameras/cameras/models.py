@@ -84,6 +84,18 @@ class Camera(models.Model):
         null=True,
         help_text="Photo of the camera",
     )
+    image_2 = models.ImageField(
+        upload_to="camera_images/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="Photo of the camera and its surroundings",
+    )
+    image_3 = models.ImageField(
+        upload_to="camera_images/%Y/%m/",
+        blank=True,
+        null=True,
+        help_text="Photo of a Project Nola sign (if present)",
+    )
 
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)

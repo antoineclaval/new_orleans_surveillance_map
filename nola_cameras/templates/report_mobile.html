@@ -1,0 +1,444 @@
+{% extends "base.html" %}
+
+{% block title %}Report a Camera - NOLA Camera Map{% endblock %}
+
+{% block extra_css %}
+<style>
+    #location-map {
+        height: 250px;
+        width: 100%;
+        border-radius: 0.5rem;
+        cursor: crosshair;
+    }
+
+    .location-marker {
+        background-color: #6b46c1;
+        border: 3px solid white;
+        border-radius: 50%;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+
+    .photo-card {
+        border-radius: 0.75rem;
+        border: 2px dashed #d1d5db;
+        padding: 1rem;
+        text-align: center;
+        transition: border-color 0.2s;
+    }
+
+    .photo-card.has-photo {
+        border-style: solid;
+        border-color: #6b46c1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="max-w-lg mx-auto px-4 py-6">
+    <div class="mb-6">
+        <h1 class="text-xl font-bold text-gray-900 mb-1">Report a Surveillance Camera</h1>
+        <p class="text-sm text-gray-600">
+            Help map surveillance cameras in New Orleans. Your submission will be reviewed before appearing on the map.
+        </p>
+    </div>
+
+    <form method="post" enctype="multipart/form-data" class="space-y-5" x-data="reportForm()" @submit="validateForm($event)">
+        {% csrf_token %}
+
+        <!-- Honeypot field (hidden from users, catches bots) -->
+        <div style="position: absolute; left: -9999px;" aria-hidden="true">
+            {{ form.website }}
+        </div>
+
+        <!-- Location Map -->
+        <div>
+            <label class="block text-sm font-medium text-gray-700 mb-2">
+                Camera Location <span class="text-red-500">*</span>
+            </label>
+            <div class="flex items-center gap-2 mb-2">
+                <p class="text-xs text-gray-500 flex-1">Tap the map to set the camera location</p>
+                <button type="button"
+                        @click="useMyLocation()"
+                        :disabled="locating"
+                        class="flex items-center gap-1 text-xs px-3 py-2 rounded-lg border border-nola-purple text-nola-purple hover:bg-purple-50 transition disabled:opacity-50 disabled:cursor-not-allowed shrink-0">
+                    <svg class="w-4 h-4" :class="{ 'animate-spin': locating }" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
+                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                              d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
+                    </svg>
+                    <span x-text="locating ? 'Detecting...' : 'Use my location'"></span>
+                </button>
+            </div>
+            <p x-show="locationError" x-text="locationError" class="text-xs text-red-500 mb-2"></p>
+            <div id="location-map" class="border border-gray-300"></div>
+            <input type="hidden" name="latitude" x-model="latitude" id="id_latitude">
+            <input type="hidden" name="longitude" x-model="longitude" id="id_longitude">
+            <p x-show="!latitude" class="text-xs text-amber-600 mt-2">
+                Please tap the map to select the camera location.
+            </p>
+            <p x-show="latitude" class="text-xs text-green-600 mt-2">
+                Location selected: <span x-text="latitude?.toFixed(6)"></span>, <span x-text="longitude?.toFixed(6)"></span>
+            </p>
+        </div>
+
+        <!-- Cross Road -->
+        <div>
+            <label for="id_cross_road" class="block text-sm font-medium text-gray-700 mb-2">
+                Nearest Intersection <span class="text-red-500">*</span>
+            </label>
+            <input type="text"
+                   name="cross_road"
+                   id="id_cross_road"
+                   required
+                   class="form-input"
+                   placeholder="e.g., Canal St & Bourbon St">
+            {% if form.cross_road.errors %}
+            <p class="text-xs text-red-500 mt-1">{{ form.cross_road.errors.0 }}</p>
+            {% endif %}
+        </div>
+
+        <!-- Street Address -->
+        <div>
+            <label for="id_street_address" class="block text-sm font-medium text-gray-700 mb-2">
+                Street Address <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="text"
+                   name="street_address"
+                   id="id_street_address"
+                   class="form-input"
+                   placeholder="e.g., 123 Main St">
+        </div>
+
+        <!-- Facial Recognition -->
+        <div class="flex items-start">
+            <div class="flex items-center h-5">
+                <input type="checkbox"
+                       name="facial_recognition"
+                       id="id_facial_recognition"
+                       class="form-checkbox">
+            </div>
+            <div class="ml-3">
+                <label for="id_facial_recognition" class="text-sm font-medium text-gray-700">
+                    Facial Recognition Capability
+                </label>
+                <p class="text-xs text-gray-500">Check if this camera may have facial recognition</p>
+            </div>
+        </div>
+
+        <!-- Associated Shop -->
+        <div>
+            <label for="id_associated_shop" class="block text-sm font-medium text-gray-700 mb-2">
+                Associated Business <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="text"
+                   name="associated_shop"
+                   id="id_associated_shop"
+                   class="form-input"
+                   placeholder="e.g., Corner Store">
+        </div>
+
+        <!-- Photos Section -->
+        <div>
+            <h2 class="text-sm font-semibold text-gray-800 mb-1">Photos</h2>
+            <p class="text-xs text-gray-500 mb-3">Photos 1 and 2 are required to help verify the camera.</p>
+
+            <!-- Photo 1: Close-up (required) -->
+            <div class="photo-card mb-3" :class="{ 'has-photo': imagePreview }">
+                <label for="id_image" class="block cursor-pointer">
+                    <template x-if="!imagePreview">
+                        <div>
+                            <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <p class="text-sm font-medium text-gray-700">
+                                Photo 1 — Close-up of the camera
+                                <span class="text-red-500">*</span>
+                            </p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                        </div>
+                    </template>
+                    <template x-if="imagePreview">
+                        <div>
+                            <img :src="imagePreview" alt="Photo 1 preview" class="max-h-40 mx-auto rounded-lg mb-2">
+                            <p class="text-xs text-green-600 font-medium">Photo 1 captured</p>
+                        </div>
+                    </template>
+                    <input type="file"
+                           name="image"
+                           id="id_image"
+                           accept="image/*"
+                           capture="environment"
+                           class="hidden"
+                           @change="previewImage($event, 1)">
+                </label>
+                <button x-show="imagePreview"
+                        type="button"
+                        @click="clearImage(1)"
+                        class="mt-2 text-xs text-red-500 hover:text-red-700">
+                    Retake photo
+                </button>
+            </div>
+            <p x-show="photoError1" class="text-xs text-red-500 mb-3 -mt-1">Photo 1 is required.</p>
+
+            <!-- Photo 2: Surroundings (required) -->
+            <div class="photo-card mb-3" :class="{ 'has-photo': imagePreview2 }">
+                <label for="id_image_2" class="block cursor-pointer">
+                    <template x-if="!imagePreview2">
+                        <div>
+                            <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <p class="text-sm font-medium text-gray-700">
+                                Photo 2 — Camera and surroundings
+                                <span class="text-red-500">*</span>
+                            </p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                        </div>
+                    </template>
+                    <template x-if="imagePreview2">
+                        <div>
+                            <img :src="imagePreview2" alt="Photo 2 preview" class="max-h-40 mx-auto rounded-lg mb-2">
+                            <p class="text-xs text-green-600 font-medium">Photo 2 captured</p>
+                        </div>
+                    </template>
+                    <input type="file"
+                           name="image_2"
+                           id="id_image_2"
+                           accept="image/*"
+                           capture="environment"
+                           class="hidden"
+                           @change="previewImage($event, 2)">
+                </label>
+                <button x-show="imagePreview2"
+                        type="button"
+                        @click="clearImage(2)"
+                        class="mt-2 text-xs text-red-500 hover:text-red-700">
+                    Retake photo
+                </button>
+            </div>
+            <p x-show="photoError2" class="text-xs text-red-500 mb-3 -mt-1">Photo 2 is required.</p>
+
+            <!-- Photo 3: Project Nola sign (optional) -->
+            <div class="photo-card" :class="{ 'has-photo': imagePreview3 }">
+                <label for="id_image_3" class="block cursor-pointer">
+                    <template x-if="!imagePreview3">
+                        <div>
+                            <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"/>
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+                                      d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            </svg>
+                            <p class="text-sm font-medium text-gray-700">
+                                Photo 3 — Project Nola sign
+                                <span class="text-gray-400 text-xs">(optional)</span>
+                            </p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                        </div>
+                    </template>
+                    <template x-if="imagePreview3">
+                        <div>
+                            <img :src="imagePreview3" alt="Photo 3 preview" class="max-h-40 mx-auto rounded-lg mb-2">
+                            <p class="text-xs text-green-600 font-medium">Photo 3 captured</p>
+                        </div>
+                    </template>
+                    <input type="file"
+                           name="image_3"
+                           id="id_image_3"
+                           accept="image/*"
+                           capture="environment"
+                           class="hidden"
+                           @change="previewImage($event, 3)">
+                </label>
+                <button x-show="imagePreview3"
+                        type="button"
+                        @click="clearImage(3)"
+                        class="mt-2 text-xs text-red-500 hover:text-red-700">
+                    Retake photo
+                </button>
+            </div>
+        </div>
+
+        <!-- Reporter Info -->
+        <div>
+            <label for="id_reported_by" class="block text-sm font-medium text-gray-700 mb-2">
+                Your Email or Name <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="text"
+                   name="reported_by"
+                   id="id_reported_by"
+                   class="form-input"
+                   placeholder="e.g., john@example.com">
+        </div>
+
+        <!-- Form Errors -->
+        {% if form.non_field_errors %}
+        <div class="bg-red-50 border border-red-200 rounded-lg p-4">
+            <p class="text-red-700 text-sm">{{ form.non_field_errors.0 }}</p>
+        </div>
+        {% endif %}
+
+        <!-- Submit Button -->
+        <div class="pt-2 pb-6">
+            <button type="submit"
+                    class="w-full bg-nola-purple text-white py-4 px-6 rounded-xl font-medium text-base hover:bg-purple-700 active:bg-purple-800 transition flex items-center justify-center space-x-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                          d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8"/>
+                </svg>
+                <span>Submit Camera Report</span>
+            </button>
+            <p class="text-center text-xs text-gray-500 mt-3">
+                By submitting, you confirm this information is accurate to the best of your knowledge.
+            </p>
+        </div>
+    </form>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function reportForm() {
+    return {
+        map: null,
+        marker: null,
+        latitude: null,
+        longitude: null,
+        imagePreview: null,
+        imagePreview2: null,
+        imagePreview3: null,
+        locating: false,
+        locationError: null,
+        photoError1: false,
+        photoError2: false,
+
+        init() {
+            this.map = L.map('location-map').setView([29.9511, -90.0715], 13);
+
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+            }).addTo(this.map);
+
+            this.map.on('click', (e) => {
+                this.setLocation(e.latlng.lat, e.latlng.lng);
+            });
+        },
+
+        setLocation(lat, lng) {
+            this.latitude = lat;
+            this.longitude = lng;
+
+            if (this.marker) {
+                this.map.removeLayer(this.marker);
+            }
+
+            const icon = L.divIcon({
+                className: 'location-marker',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
+            });
+
+            this.marker = L.marker([lat, lng], { icon: icon, draggable: true }).addTo(this.map);
+
+            this.marker.on('dragend', (e) => {
+                const pos = e.target.getLatLng();
+                this.latitude = pos.lat;
+                this.longitude = pos.lng;
+            });
+        },
+
+        useMyLocation() {
+            if (!('geolocation' in navigator)) {
+                this.locationError = 'Geolocation is not supported by your browser.';
+                return;
+            }
+            this.locating = true;
+            this.locationError = null;
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    this.locating = false;
+                    const { latitude, longitude } = position.coords;
+                    this.map.setView([latitude, longitude], 17);
+                    this.setLocation(latitude, longitude);
+                },
+                () => {
+                    this.locating = false;
+                    this.locationError = 'Unable to get your location. Enable location permissions or tap the map.';
+                }
+            );
+        },
+
+        previewImage(event, slot) {
+            const file = event.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (slot === 2) {
+                        this.imagePreview2 = e.target.result;
+                        this.photoError2 = false;
+                    } else if (slot === 3) {
+                        this.imagePreview3 = e.target.result;
+                    } else {
+                        this.imagePreview = e.target.result;
+                        this.photoError1 = false;
+                    }
+                };
+                reader.readAsDataURL(file);
+            }
+        },
+
+        clearImage(slot) {
+            if (slot === 2) {
+                this.imagePreview2 = null;
+                document.getElementById('id_image_2').value = '';
+            } else if (slot === 3) {
+                this.imagePreview3 = null;
+                document.getElementById('id_image_3').value = '';
+            } else {
+                this.imagePreview = null;
+                document.getElementById('id_image').value = '';
+            }
+        },
+
+        validateForm(event) {
+            let valid = true;
+
+            if (!this.latitude || !this.longitude) {
+                event.preventDefault();
+                alert('Please tap the map to set the camera location.');
+                return false;
+            }
+
+            if (!this.imagePreview) {
+                this.photoError1 = true;
+                valid = false;
+            }
+
+            if (!this.imagePreview2) {
+                this.photoError2 = true;
+                valid = false;
+            }
+
+            if (!valid) {
+                event.preventDefault();
+                return false;
+            }
+
+            return true;
+        }
+    };
+}
+
+document.addEventListener('alpine:init', () => {
+    Alpine.data('reportForm', reportForm);
+});
+</script>
+{% endblock %}

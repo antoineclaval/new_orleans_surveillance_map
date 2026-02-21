@@ -46,6 +46,8 @@ class CameraReportForm(forms.ModelForm):
             "associated_shop",
             "reported_by",
             "image",
+            "image_2",
+            "image_3",
         ]
         widgets = {
             "cross_road": forms.TextInput(attrs={
@@ -68,6 +70,14 @@ class CameraReportForm(forms.ModelForm):
                 "class": "form-checkbox",
             }),
             "image": forms.FileInput(attrs={
+                "class": "form-file",
+                "accept": "image/*",
+            }),
+            "image_2": forms.FileInput(attrs={
+                "class": "form-file",
+                "accept": "image/*",
+            }),
+            "image_3": forms.FileInput(attrs={
                 "class": "form-file",
                 "accept": "image/*",
             }),

@@ -349,6 +349,72 @@ start_dev() {
         sh -c "python manage.py migrate && python manage.py runserver 0.0.0.0:8000"
 }
 
+container_shell() {
+    print_header "Container Shell"
+
+    check_podman
+    load_env
+
+    # If the web-dev container is already running, exec straight into it
+    if podman ps --format '{{.Names}}' | grep -q '^nola-web-dev$'; then
+        print_status "Attaching to running nola-web-dev container..."
+        exec podman exec -it nola-web-dev sh
+    fi
+
+    # Otherwise ensure the network and DB are up, then start a fresh container
+    if ! podman network exists nola-net 2>/dev/null; then
+        print_status "Creating container network..."
+        podman network create nola-net
+    fi
+
+    if podman ps -a --format '{{.Names}}' | grep -q '^nola-db$'; then
+        podman start nola-db 2>/dev/null || true
+    else
+        print_status "Starting PostgreSQL/PostGIS container..."
+        podman run -d \
+            --name nola-db \
+            --network nola-net \
+            -e POSTGRES_DB="${POSTGRES_DB:-nola_cameras}" \
+            -e POSTGRES_USER="${POSTGRES_USER:-nola}" \
+            -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-nola_dev_password}" \
+            -v nola_postgres_data:/var/lib/postgresql/data \
+            -p 5432:5432 \
+            docker.io/postgis/postgis:16-3.4
+    fi
+
+    print_status "Waiting for database to be ready..."
+    local retries=30
+    while ! podman exec nola-db pg_isready -U "${POSTGRES_USER:-nola}" -d "${POSTGRES_DB:-nola_cameras}" &>/dev/null; do
+        retries=$((retries - 1))
+        if [ $retries -eq 0 ]; then
+            print_error "Database failed to start. Check: podman logs nola-db"
+            exit 1
+        fi
+        sleep 2
+    done
+    print_status "Database is ready"
+
+    print_status "Building development image..."
+    podman build -f containers/Containerfile.dev -t nola-web-dev .
+
+    print_status "Launching shell inside container (code mounted at /app)..."
+    print_info "Run 'python manage.py makemigrations' etc. from here"
+    echo ""
+    exec podman run --rm -it \
+        --name nola-web-dev \
+        --network nola-net \
+        -e DJANGO_SETTINGS_MODULE=config.settings.development \
+        -e POSTGRES_HOST=nola-db \
+        -e POSTGRES_DB="${POSTGRES_DB:-nola_cameras}" \
+        -e POSTGRES_USER="${POSTGRES_USER:-nola}" \
+        -e POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-nola_dev_password}" \
+        -e POSTGRES_PORT=5432 \
+        -e DJANGO_DEBUG=True \
+        -v "$(pwd)/nola_cameras:/app:z" \
+        nola-web-dev \
+        sh
+}
+
 # =============================================================================
 # Production Deployment
 # =============================================================================
@@ -408,6 +474,26 @@ run_migrations() {
     fi
 
     print_status "Migrations completed"
+}
+
+make_migrations() {
+    local app="${2:-}"
+    print_status "Making migrations${app:+ for $app}..."
+    load_env
+
+    if podman ps | grep -q nola-web-dev; then
+        podman exec nola-web-dev python manage.py makemigrations $app
+    elif podman ps | grep -q nola-web; then
+        podman exec nola-web python manage.py makemigrations $app
+    elif [ -d ".venv" ]; then
+        cd nola_cameras
+        uv run python manage.py makemigrations $app
+    else
+        print_error "No running environment found. Start with 'local', 'dev', or 'prod' first."
+        exit 1
+    fi
+
+    print_status "Makemigrations completed"
 }
 
 seed_database() {
@@ -491,14 +577,16 @@ show_help() {
     echo "              Best for: Staging and production servers"
     echo ""
     echo -e "${BLUE}Local Development Commands:${NC}"
-    echo "  run         Start Django development server (after 'local' setup)"
-    echo "  shell       Open Django shell"
-    echo "  db-stop     Stop the database container"
+    echo "  run             Start Django development server (after 'local' setup)"
+    echo "  shell           Open Django shell"
+    echo "  container-shell Start (or attach to) the dev container and open a shell"
+    echo "  db-stop         Stop the database container"
     echo ""
     echo -e "${BLUE}Database Commands:${NC}"
-    echo "  migrate     Run database migrations"
-    echo "  seed        Load sample camera data"
-    echo "  superuser   Create Django admin superuser"
+    echo "  makemigrations [app]  Generate new migration files"
+    echo "  migrate               Run database migrations"
+    echo "  seed                  Load sample camera data"
+    echo "  superuser             Create Django admin superuser"
     echo ""
     echo -e "${BLUE}Cleanup Commands:${NC}"
     echo "  stop        Stop all running containers"
@@ -533,6 +621,12 @@ case "${1:-help}" in
         ;;
     db-stop)
         stop_db
+        ;;
+    container-shell)
+        container_shell
+        ;;
+    makemigrations)
+        make_migrations "$@"
         ;;
     migrate)
         run_migrations

@@ -126,24 +126,66 @@
             <p class="text-sm text-gray-500 mt-1">If this is a private camera, enter the business name</p>
         </div>
 
-        <!-- Image Upload -->
+        <!-- Photo 1: Close-up of the camera -->
         <div>
             <label for="id_image" class="block text-sm font-medium text-gray-700 mb-2">
-                Photo of Camera <span class="text-gray-400">(optional)</span>
+                Photo 1 — Close-up of the camera <span class="text-gray-400">(optional)</span>
             </label>
             <input type="file"
                    name="image"
                    id="id_image"
                    accept="image/*"
                    class="form-file"
-                   @change="previewImage($event)">
-            <p class="text-sm text-gray-500 mt-1">Upload a photo to help verify the camera location</p>
-
-            <!-- Image Preview -->
+                   @change="previewImage($event, 1)">
+            <p class="text-sm text-gray-500 mt-1">A clear close-up photo of the camera itself</p>
             <div x-show="imagePreview" class="mt-3">
                 <img :src="imagePreview" alt="Preview" class="max-h-48 rounded-lg border border-gray-200">
                 <button type="button"
-                        @click="clearImage()"
+                        @click="clearImage(1)"
+                        class="mt-2 text-sm text-red-500 hover:text-red-700">
+                    Remove image
+                </button>
+            </div>
+        </div>
+
+        <!-- Photo 2: Camera and surroundings -->
+        <div>
+            <label for="id_image_2" class="block text-sm font-medium text-gray-700 mb-2">
+                Photo 2 — Camera and surroundings <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="file"
+                   name="image_2"
+                   id="id_image_2"
+                   accept="image/*"
+                   class="form-file"
+                   @change="previewImage($event, 2)">
+            <p class="text-sm text-gray-500 mt-1">A wider shot showing the camera in its environment</p>
+            <div x-show="imagePreview2" class="mt-3">
+                <img :src="imagePreview2" alt="Preview" class="max-h-48 rounded-lg border border-gray-200">
+                <button type="button"
+                        @click="clearImage(2)"
+                        class="mt-2 text-sm text-red-500 hover:text-red-700">
+                    Remove image
+                </button>
+            </div>
+        </div>
+
+        <!-- Photo 3: Project Nola sign -->
+        <div>
+            <label for="id_image_3" class="block text-sm font-medium text-gray-700 mb-2">
+                Photo 3 — Project Nola sign <span class="text-gray-400">(optional)</span>
+            </label>
+            <input type="file"
+                   name="image_3"
+                   id="id_image_3"
+                   accept="image/*"
+                   class="form-file"
+                   @change="previewImage($event, 3)">
+            <p class="text-sm text-gray-500 mt-1">A photo of a Project Nola sign, if present</p>
+            <div x-show="imagePreview3" class="mt-3">
+                <img :src="imagePreview3" alt="Preview" class="max-h-48 rounded-lg border border-gray-200">
+                <button type="button"
+                        @click="clearImage(3)"
                         class="mt-2 text-sm text-red-500 hover:text-red-700">
                     Remove image
                 </button>
@@ -198,6 +240,8 @@ function reportForm() {
         latitude: null,
         longitude: null,
         imagePreview: null,
+        imagePreview2: null,
+        imagePreview3: null,
         locating: false,
         locationError: null,
 
@@ -286,20 +330,30 @@ function reportForm() {
             );
         },
 
-        previewImage(event) {
+        previewImage(event, slot) {
             const file = event.target.files[0];
             if (file) {
                 const reader = new FileReader();
                 reader.onload = (e) => {
-                    this.imagePreview = e.target.result;
+                    if (slot === 2) this.imagePreview2 = e.target.result;
+                    else if (slot === 3) this.imagePreview3 = e.target.result;
+                    else this.imagePreview = e.target.result;
                 };
                 reader.readAsDataURL(file);
             }
         },
 
-        clearImage() {
-            this.imagePreview = null;
-            document.getElementById('id_image').value = '';
+        clearImage(slot) {
+            if (slot === 2) {
+                this.imagePreview2 = null;
+                document.getElementById('id_image_2').value = '';
+            } else if (slot === 3) {
+                this.imagePreview3 = null;
+                document.getElementById('id_image_3').value = '';
+            } else {
+                this.imagePreview = null;
+                document.getElementById('id_image').value = '';
+            }
         },
 
         validateForm(event) {
