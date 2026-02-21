@@ -446,7 +446,7 @@ start_prod() {
     export POSTGRES_HOST=db
 
     print_status "Building and starting production containers..."
-    podman-compose -f containers/podman-compose.yml --profile prod up -d --build
+    podman-compose -f containers/podman-compose.yml up -d --build
 
     # Run migrations
     print_status "Running database migrations..."
@@ -867,8 +867,8 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=$PROJECT_ROOT
-ExecStart=$compose_bin -f containers/podman-compose.yml --profile prod up -d
-ExecStop=$compose_bin -f containers/podman-compose.yml --profile prod down
+ExecStart=$compose_bin -f containers/podman-compose.yml up -d
+ExecStop=$compose_bin -f containers/podman-compose.yml down
 EnvironmentFile=$PROJECT_ROOT/.env
 
 [Install]

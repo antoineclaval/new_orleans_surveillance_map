@@ -58,8 +58,6 @@ services:
       context: ..
       dockerfile: containers/Containerfile
     container_name: nola-web
-    profiles:
-      - prod
     environment:
       DJANGO_SETTINGS_MODULE: config.settings.production
       DJANGO_SECRET_KEY: ${DJANGO_SECRET_KEY}
@@ -84,8 +82,6 @@ services:
   caddy:
     image: docker.io/caddy:2
     container_name: nola-caddy
-    profiles:
-      - prod
     ports:
       - "80:80"
       - "443:443"
