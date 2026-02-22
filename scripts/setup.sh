@@ -445,11 +445,11 @@ start_prod() {
     # Update POSTGRES_HOST for containerized mode
     export POSTGRES_HOST=db
 
-    # Tear down any stale containers so podman-compose always creates fresh ones
-    # on the correct network (avoids "name already in use" → podman start → DNS failure)
-    print_status "Removing any stale production containers..."
-    podman rm -f nola-caddy nola-web nola-db 2>/dev/null || true
-    podman network rm containers_default 2>/dev/null || true
+    # Tear down any existing stack so podman-compose always creates fresh containers
+    # on the correct network. Use 'down' (not manual rm) so it respects --requires
+    # dependency order: caddy → web → db.
+    print_status "Tearing down any existing stack..."
+    podman-compose -f containers/podman-compose.yml down 2>/dev/null || true
 
     print_status "Building and starting production containers..."
     podman-compose -f containers/podman-compose.yml up -d --build db web caddy
@@ -497,6 +497,7 @@ update_prod() {
     git pull
 
     print_status "Rebuilding and restarting containers (DB volume preserved)..."
+    podman-compose -f containers/podman-compose.yml down 2>/dev/null || true
     podman-compose -f containers/podman-compose.yml up -d --build db web caddy
 
     # Wait for DB
@@ -1046,6 +1047,7 @@ show_help() {
     echo "                  Includes: SSH hardening, fail2ban, sysctl, auto-updates"
     echo "                  Re-run after fixing any failure to resume from that step"
     echo "                  Reset progress: rm .prepare_prod_state"
+    echo "  update          Pull latest code and restart containers (DB data preserved)"
     echo ""
     echo -e "${BLUE}Cleanup Commands:${NC}"
     echo "  stop        Stop all running containers"
@@ -1105,6 +1107,9 @@ case "${1:-help}" in
         ;;
     prepare-prod)
         prepare_prod
+        ;;
+    update)
+        update_prod
         ;;
     help|*)
         show_help
