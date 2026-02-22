@@ -82,6 +82,10 @@ services:
   caddy:
     image: docker.io/caddy:2
     container_name: nola-caddy
+    environment:
+      # Falls back to DOMAIN so domain deployments get auto-TLS without extra config.
+      # For bare IPs, set CADDY_SITE=http://x.x.x.x in .env to disable HTTPS redirect.
+      CADDY_SITE: ${CADDY_SITE:-${DOMAIN:-localhost}}
     ports:
       - "80:80"
       - "443:443"
