@@ -445,6 +445,12 @@ start_prod() {
     # Update POSTGRES_HOST for containerized mode
     export POSTGRES_HOST=db
 
+    # Tear down any stale containers so podman-compose always creates fresh ones
+    # on the correct network (avoids "name already in use" → podman start → DNS failure)
+    print_status "Removing any stale production containers..."
+    podman rm -f nola-caddy nola-web nola-db 2>/dev/null || true
+    podman network rm containers_default 2>/dev/null || true
+
     print_status "Building and starting production containers..."
     podman-compose -f containers/podman-compose.yml up -d --build db web caddy
 
@@ -467,6 +473,48 @@ start_prod() {
 
     print_status "Production server running!"
     print_status "Access at https://${DOMAIN:-localhost}"
+}
+
+# =============================================================================
+# Production Update
+# =============================================================================
+
+update_prod() {
+    print_header "Production Update"
+
+    check_podman
+    check_podman_compose
+
+    if [ ! -f ".env" ]; then
+        print_error ".env file not found."
+        exit 1
+    fi
+
+    load_env
+    export POSTGRES_HOST=db
+
+    print_status "Pulling latest code..."
+    git pull
+
+    print_status "Rebuilding and restarting containers (DB volume preserved)..."
+    podman-compose -f containers/podman-compose.yml up -d --build db web caddy
+
+    # Wait for DB
+    print_status "Waiting for database to be ready..."
+    local waited=0
+    until podman exec nola-db pg_isready -U "${POSTGRES_USER:-nola}" -d "${POSTGRES_DB:-nola_cameras}" &>/dev/null; do
+        if [ $waited -ge 60 ]; then
+            print_error "Database did not become ready after 60s. Check: podman logs nola-db"
+            exit 1
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+
+    print_status "Running database migrations..."
+    podman exec nola-web python manage.py migrate
+
+    print_status "Update complete — app running at http://${DOMAIN:-localhost}"
 }
 
 # =============================================================================
