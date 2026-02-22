@@ -446,11 +446,23 @@ start_prod() {
     export POSTGRES_HOST=db
 
     print_status "Building and starting production containers..."
-    podman-compose -f containers/podman-compose.yml up -d --build
+    podman-compose -f containers/podman-compose.yml up -d --build db web caddy
+
+    # Wait for DB to be healthy before migrating
+    print_status "Waiting for database to be ready..."
+    local waited=0
+    until podman exec nola-db pg_isready -U "${POSTGRES_USER:-nola}" -d "${POSTGRES_DB:-nola_cameras}" &>/dev/null; do
+        if [ $waited -ge 60 ]; then
+            print_error "Database did not become ready after 60s. Check: podman logs nola-db"
+            exit 1
+        fi
+        sleep 2
+        waited=$((waited + 2))
+    done
+    print_status "Database is ready"
 
     # Run migrations
     print_status "Running database migrations..."
-    sleep 5
     podman exec nola-web python manage.py migrate
 
     print_status "Production server running!"
@@ -867,7 +879,7 @@ Wants=network-online.target
 Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=$PROJECT_ROOT
-ExecStart=$compose_bin -f containers/podman-compose.yml up -d
+ExecStart=$compose_bin -f containers/podman-compose.yml up -d db web caddy
 ExecStop=$compose_bin -f containers/podman-compose.yml down
 EnvironmentFile=$PROJECT_ROOT/.env
 
