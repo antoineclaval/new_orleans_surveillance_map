@@ -472,7 +472,11 @@ start_prod() {
     podman exec nola-web python manage.py migrate
 
     print_status "Production server running!"
-    print_status "Access at https://${DOMAIN:-localhost}"
+    local scheme="https"
+    if [[ "${DOMAIN:-localhost}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "${DOMAIN:-localhost}" =~ ^[0-9a-fA-F:]+$ ]]; then
+        scheme="http"
+    fi
+    print_status "Access at $scheme://${DOMAIN:-localhost}"
 }
 
 # =============================================================================
@@ -666,7 +670,17 @@ prep_step_firewall() {
     ufw allow 80
     ufw allow 443
     ufw --force enable
-    print_status "Firewall configured: SSH, HTTP, HTTPS allowed"
+
+    # Allow container traffic on podman bridge interfaces (podman0, podman1, …)
+    # so aardvark-dns (listening on 10.89.x.1:53) can answer queries from containers.
+    # UFW's default INPUT DROP blocks these without an explicit rule.
+    if ! grep -q 'podman+' /etc/ufw/before.rules 2>/dev/null; then
+        sed -i '/^COMMIT$/i # Allow podman bridge traffic (aardvark-dns + container routing)\n-A ufw-before-input -i podman+ -j ACCEPT\n-A ufw-before-forward -i podman+ -j ACCEPT\n-A ufw-before-forward -o podman+ -j ACCEPT' \
+            /etc/ufw/before.rules
+        ufw reload
+    fi
+
+    print_status "Firewall configured: SSH, HTTP, HTTPS allowed; podman bridges unrestricted"
 }
 
 prep_step_ssh_harden() {
@@ -948,12 +962,19 @@ prep_step_verify() {
     podman ps
 
     echo ""
-    print_info "Waiting for https://$DOMAIN/ to respond (up to 60s — TLS cert may still be provisioning)..."
+
+    # Bare IP addresses can't get TLS certs — use HTTP
+    local scheme="https"
+    if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$DOMAIN" =~ ^[0-9a-fA-F:]+$ ]]; then
+        scheme="http"
+    fi
+
+    print_info "Waiting for $scheme://$DOMAIN/ to respond (up to 60s)..."
 
     local i=0
     while [ $i -lt 12 ]; do
-        if curl -sf "https://$DOMAIN/" > /dev/null 2>&1; then
-            print_status "https://$DOMAIN/ is responding — deployment verified!"
+        if curl -sf "$scheme://$DOMAIN/" > /dev/null 2>&1; then
+            print_status "$scheme://$DOMAIN/ is responding — deployment verified!"
             return 0
         fi
         i=$((i + 1))
@@ -961,9 +982,11 @@ prep_step_verify() {
         sleep 5
     done
 
-    print_warning "https://$DOMAIN/ did not respond after 60s."
-    print_warning "This is normal if Caddy is still provisioning the TLS certificate."
-    print_warning "Check again in a minute: curl -I https://$DOMAIN/"
+    print_warning "$scheme://$DOMAIN/ did not respond after 60s."
+    if [ "$scheme" = "https" ]; then
+        print_warning "This is normal if Caddy is still provisioning the TLS certificate."
+    fi
+    print_warning "Check manually: curl -I $scheme://$DOMAIN/"
 }
 
 # =============================================================================
