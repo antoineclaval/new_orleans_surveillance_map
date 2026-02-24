@@ -882,28 +882,45 @@ prep_step_validate_env() {
 prep_step_dns() {
     load_env
 
-    local public_ip
-    public_ip="$(curl -sf https://ifconfig.me)" || {
+    # Probe both IPv4 and IPv6 outbound addresses
+    local ipv4 ipv6
+    ipv4="$(curl -sf --ipv4 https://ifconfig.me 2>/dev/null)" || true
+    ipv6="$(curl -sf --ipv6 https://ifconfig.me 2>/dev/null)" || true
+
+    if [ -z "$ipv4" ] && [ -z "$ipv6" ]; then
         print_error "Could not determine server public IP (curl ifconfig.me failed)"
         exit 1
-    }
+    fi
 
-    local resolved_ip
-    resolved_ip="$(getent hosts "$DOMAIN" | awk '{ print $1 }' | head -1)" || true
+    # Collect all IPs the domain resolves to (A + AAAA)
+    local resolved_ips
+    resolved_ips="$(getent ahosts "$DOMAIN" 2>/dev/null | awk '{ print $1 }' | sort -u)" || true
 
-    if [ -z "$resolved_ip" ]; then
+    if [ -z "$resolved_ips" ]; then
         print_error "DNS: '$DOMAIN' does not resolve to any IP address."
-        print_error "Point an A record for '$DOMAIN' to this server's IP: $public_ip"
+        [ -n "$ipv4" ] && print_error "  Add A record:    $DOMAIN → $ipv4"
+        [ -n "$ipv6" ] && print_error "  Add AAAA record: $DOMAIN → $ipv6"
         exit 1
     fi
 
-    if [ "$resolved_ip" != "$public_ip" ]; then
-        print_error "DNS mismatch: '$DOMAIN' resolves to $resolved_ip but this server's IP is $public_ip"
-        print_error "Update the A record for '$DOMAIN' to point to $public_ip"
+    local matched_ip=""
+    while IFS= read -r ip; do
+        if [ "$ip" = "$ipv4" ] || [ "$ip" = "$ipv6" ]; then
+            matched_ip="$ip"
+            break
+        fi
+    done <<< "$resolved_ips"
+
+    if [ -z "$matched_ip" ]; then
+        print_error "DNS mismatch: '$DOMAIN' resolves to:"
+        while IFS= read -r ip; do echo "    $ip"; done <<< "$resolved_ips"
+        print_error "But this server's IPs are:"
+        [ -n "$ipv4" ] && print_error "  IPv4: $ipv4  (add A record)"
+        [ -n "$ipv6" ] && print_error "  IPv6: $ipv6  (add AAAA record)"
         exit 1
     fi
 
-    print_status "DNS OK: $DOMAIN → $public_ip"
+    print_status "DNS OK: $DOMAIN → $matched_ip"
 }
 
 prep_step_deploy() {
