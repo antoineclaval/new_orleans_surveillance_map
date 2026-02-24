@@ -472,11 +472,7 @@ start_prod() {
     podman exec nola-web python manage.py migrate
 
     print_status "Production server running!"
-    local scheme="https"
-    if [[ "${DOMAIN:-localhost}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "${DOMAIN:-localhost}" =~ ^[0-9a-fA-F:]+$ ]]; then
-        scheme="http"
-    fi
-    print_status "Access at $scheme://${DOMAIN:-localhost}"
+    print_status "Access at https://${DOMAIN:-localhost}"
 }
 
 # =============================================================================
@@ -519,7 +515,7 @@ update_prod() {
     print_status "Running database migrations..."
     podman exec nola-web python manage.py migrate
 
-    print_status "Update complete — app running at http://${DOMAIN:-localhost}"
+    print_status "Update complete — app running at https://${DOMAIN:-localhost}"
 }
 
 # =============================================================================
@@ -886,12 +882,6 @@ prep_step_validate_env() {
 prep_step_dns() {
     load_env
 
-    # If DOMAIN is a bare IPv4 or IPv6 address, skip DNS verification entirely
-    if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$DOMAIN" =~ ^[0-9a-fA-F:]+$ ]]; then
-        print_status "DOMAIN is an IP address — skipping DNS check"
-        return 0
-    fi
-
     local public_ip
     public_ip="$(curl -sf https://ifconfig.me)" || {
         print_error "Could not determine server public IP (curl ifconfig.me failed)"
@@ -963,18 +953,12 @@ prep_step_verify() {
 
     echo ""
 
-    # Bare IP addresses can't get TLS certs — use HTTP
-    local scheme="https"
-    if [[ "$DOMAIN" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$DOMAIN" =~ ^[0-9a-fA-F:]+$ ]]; then
-        scheme="http"
-    fi
-
-    print_info "Waiting for $scheme://$DOMAIN/ to respond (up to 60s)..."
+    print_info "Waiting for https://$DOMAIN/ to respond (up to 60s — TLS cert may still be provisioning)..."
 
     local i=0
     while [ $i -lt 12 ]; do
-        if curl -sf "$scheme://$DOMAIN/" > /dev/null 2>&1; then
-            print_status "$scheme://$DOMAIN/ is responding — deployment verified!"
+        if curl -sf "https://$DOMAIN/" > /dev/null 2>&1; then
+            print_status "https://$DOMAIN/ is responding — deployment verified!"
             return 0
         fi
         i=$((i + 1))
@@ -982,11 +966,9 @@ prep_step_verify() {
         sleep 5
     done
 
-    print_warning "$scheme://$DOMAIN/ did not respond after 60s."
-    if [ "$scheme" = "https" ]; then
-        print_warning "This is normal if Caddy is still provisioning the TLS certificate."
-    fi
-    print_warning "Check manually: curl -I $scheme://$DOMAIN/"
+    print_warning "https://$DOMAIN/ did not respond after 60s."
+    print_warning "This is normal if Caddy is still provisioning the TLS certificate."
+    print_warning "Check again in a minute: curl -I https://$DOMAIN/"
 }
 
 # =============================================================================

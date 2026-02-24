@@ -83,10 +83,7 @@ services:
     image: docker.io/caddy:2
     container_name: nola-caddy
     environment:
-      # Set CADDY_SITE in .env:
-      #   Domain:   CADDY_SITE=yourdomain.com     → Caddy auto-provisions TLS
-      #   Bare IP:  CADDY_SITE=http://x.x.x.x    → HTTP-only (no redirect)
-      CADDY_SITE: ${CADDY_SITE:-localhost}
+      DOMAIN: ${DOMAIN:-localhost}
     ports:
       - "80:80"
       - "443:443"

@@ -1,9 +1,7 @@
 # Caddyfile for NOLA Camera Mapping
-# Site address comes from CADDY_SITE (set in .env), which defaults to DOMAIN:
-#   Domain:  don't set CADDY_SITE → Caddy uses DOMAIN and auto-provisions TLS
-#   Bare IP: CADDY_SITE=http://1.2.3.4 → HTTP-only (Let's Encrypt can't issue certs for IPs)
+# Site address comes from DOMAIN (set in .env). Caddy auto-provisions TLS for domains.
 
-{$CADDY_SITE:localhost} {
+{$DOMAIN:localhost} {
     # Enable compression
     encode gzip
 
