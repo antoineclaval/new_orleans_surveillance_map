@@ -1,8 +1,17 @@
 #cloud-config
-# Poststeps : 
-#   ssh deploy@<server-ip>
-#   cd /opt/new_orleans_surveillance_map
-#   sudo ./scripts/setup.sh prepare-prod
+# Cloud-init automates all non-interactive infrastructure setup (steps 1-6 of
+# prepare-prod): system packages, UFW with podman bridge rules, SSH hardening,
+# fail2ban, sysctl kernel hardening, and automatic security updates.
+#
+# Post-steps (manual — can't be automated):
+#   1. VPS created → copy IP → point DNS A record to that IP
+#   2. ssh deploy@<server-ip>
+#   3. nano /opt/new_orleans_surveillance_map/.env
+#      Set: DOMAIN, DJANGO_ALLOWED_HOSTS, CSRF_TRUSTED_ORIGINS, DJANGO_DEBUG=False
+#      (DJANGO_SECRET_KEY and POSTGRES_PASSWORD are already generated)
+#   4. sudo ./scripts/setup.sh prepare-prod
+#      (skips steps 1-6; runs: env → validate_env → dns → deploy → systemd → verify)
+#   5. ./scripts/setup.sh superuser
 
 timezone: America/Chicago
 package_update: true
@@ -13,12 +22,105 @@ packages:
   - podman-compose
   - git
   - ufw
+  - fail2ban
+  - unattended-upgrades
 
 users:
   - name: deploy
     shell: /bin/bash
     groups: [sudo]
     sudo: "ALL=(ALL) NOPASSWD:ALL"
+
+write_files:
+  # fail2ban: SSH jail (maxretry 3, ban 1h)
+  - path: /etc/fail2ban/jail.d/nola.local
+    owner: root:root
+    permissions: '0644'
+    content: |
+      # NOLA Camera Mapping — fail2ban jails
+      # Written by cloud-init
+
+      [DEFAULT]
+      bantime  = 1h
+      findtime = 10m
+      maxretry = 5
+
+      [sshd]
+      enabled  = true
+      port     = ssh
+      maxretry = 3
+
+  # Kernel hardening
+  - path: /etc/sysctl.d/99-nola-hardening.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      # NOLA Camera Mapping — Kernel Hardening
+      # Written by cloud-init
+
+      # ip_forward: required for podman bridge networking
+      net.ipv4.ip_forward = 1
+
+      # SYN flood protection
+      net.ipv4.tcp_syncookies = 1
+      net.ipv4.tcp_max_syn_backlog = 2048
+      net.ipv4.tcp_synack_retries = 2
+
+      # ICMP hardening
+      net.ipv4.icmp_echo_ignore_broadcasts = 1
+      net.ipv4.icmp_ignore_bogus_error_responses = 1
+
+      # Disable ICMP redirects (not a router)
+      net.ipv4.conf.all.send_redirects = 0
+      net.ipv4.conf.default.send_redirects = 0
+      net.ipv4.conf.all.accept_redirects = 0
+      net.ipv4.conf.default.accept_redirects = 0
+      net.ipv6.conf.all.accept_redirects = 0
+
+      # Source routing (used in spoofing attacks)
+      net.ipv4.conf.all.accept_source_route = 0
+      net.ipv4.conf.default.accept_source_route = 0
+
+      # Reverse path filtering (anti-spoofing)
+      net.ipv4.conf.all.rp_filter = 1
+      net.ipv4.conf.default.rp_filter = 1
+
+      # Log martians (packets with impossible source addresses)
+      net.ipv4.conf.all.log_martians = 1
+
+  # Automatic security updates: enable daily downloads + installs
+  - path: /etc/apt/apt.conf.d/20auto-upgrades
+    owner: root:root
+    permissions: '0644'
+    content: |
+      APT::Periodic::Update-Package-Lists "1";
+      APT::Periodic::Download-Upgradeable-Packages "1";
+      APT::Periodic::AutocleanInterval "7";
+      APT::Periodic::Unattended-Upgrade "1";
+
+  # SSH hardening (safe: cloud-init already installed root's authorized_keys)
+  - path: /etc/ssh/sshd_config.d/99-hardening.conf
+    owner: root:root
+    permissions: '0644'
+    content: |
+      # New Orleans Camera Mapping — SSH Hardening
+      # Written by cloud-init
+      # To revert: rm /etc/ssh/sshd_config.d/99-hardening.conf && systemctl restart ssh
+
+      # Allow root only via key, not password (Hetzner default user is root)
+      PermitRootLogin prohibit-password
+
+      # No password auth anywhere
+      PasswordAuthentication no
+      PermitEmptyPasswords no
+      ChallengeResponseAuthentication no
+      KbdInteractiveAuthentication no
+
+      # Rate-limit attempts and idle connections
+      MaxAuthTries 3
+      MaxSessions 5
+      ClientAliveInterval 300
+      ClientAliveCountMax 2
 
 runcmd:
   # Copy root's SSH key to deploy user
@@ -41,7 +143,43 @@ runcmd:
   - ufw allow 443
   - ufw --force enable
 
+  # Inject podman bridge rules into UFW before.rules so aardvark-dns
+  # (listening on the podman bridge gateway e.g. 10.89.0.1:53) is reachable
+  # from containers. Without this, UFW's default INPUT DROP silently blocks
+  # container DNS queries, causing migration failures.
+  - |
+    if ! grep -q 'podman+' /etc/ufw/before.rules 2>/dev/null; then
+      sed -i '/^COMMIT$/i # Allow podman bridge traffic (aardvark-dns + container routing)\n-A ufw-before-input -i podman+ -j ACCEPT\n-A ufw-before-forward -i podman+ -j ACCEPT\n-A ufw-before-forward -o podman+ -j ACCEPT' /etc/ufw/before.rules
+      ufw reload
+    fi
+
+  # Apply kernel hardening (config file written by write_files above)
+  - sysctl --system
+
+  # Validate SSH config then restart (config file written by write_files above)
+  - sshd -t
+  - systemctl restart ssh
+
+  # Enable fail2ban (config file written by write_files above)
+  - systemctl enable fail2ban
+  - systemctl restart fail2ban
+
+  # Disable auto-reboot in unattended-upgrades — containers don't survive
+  # unplanned host reboots; operators should reboot manually.
+  - |
+    if [ -f /etc/apt/apt.conf.d/50unattended-upgrades ]; then
+      sed -i 's|//Unattended-Upgrade::Automatic-Reboot ".*";|Unattended-Upgrade::Automatic-Reboot "false";|' /etc/apt/apt.conf.d/50unattended-upgrades
+      sed -i 's|Unattended-Upgrade::Automatic-Reboot "true";|Unattended-Upgrade::Automatic-Reboot "false";|' /etc/apt/apt.conf.d/50unattended-upgrades
+    fi
+  - systemctl enable unattended-upgrades
+  - systemctl restart unattended-upgrades
+
   # Clone repo as deploy user
   - sudo -u deploy git clone https://github.com/antoineclaval/new_orleans_surveillance_map /opt/new_orleans_surveillance_map
+
+  # Pre-mark steps 1-6 of prepare-prod as done (cloud-init performed them above).
+  # prepare-prod will skip these and start at step 7 (env).
+  - printf '%s\n' system_deps firewall ssh_harden fail2ban sysctl_harden auto_updates > /opt/new_orleans_surveillance_map/.prepare_prod_state
+  - chown deploy:deploy /opt/new_orleans_surveillance_map/.prepare_prod_state
 
   - touch /opt/new_orleans_surveillance_map/.cloud-init-done
