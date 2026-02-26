@@ -6,6 +6,7 @@ import uuid
 
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models
+from django.core.exceptions import ValidationError
 from django.utils import timezone
 
 
@@ -24,6 +25,7 @@ class Camera(models.Model):
     # Location information
     cross_road = models.CharField(
         max_length=255,
+        blank=True,
         help_text="Nearest intersection, e.g. 'Canal St & Bourbon St'",
     )
     street_address = models.CharField(
@@ -106,8 +108,15 @@ class Camera(models.Model):
         verbose_name = "Camera"
         verbose_name_plural = "Cameras"
 
+    def clean(self):
+        if not any([self.cross_road, self.street_address, self.associated_shop]):
+            raise ValidationError(
+                "At least one of cross_road, street_address, or associated_shop must be provided."
+            )
+
     def __str__(self):
-        return f"{self.cross_road} ({self.get_status_display()})"
+        label = self.cross_road or self.street_address or self.associated_shop
+        return f"{label} ({self.get_status_display()})"
 
     @property
     def latitude(self):

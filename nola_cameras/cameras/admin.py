@@ -4,10 +4,11 @@ Django admin configuration for Camera model.
 
 from django.contrib import admin
 from django.contrib.gis.admin import GISModelAdmin
+from django.contrib.gis.geos import Point
 from django.utils import timezone
 from django.utils.html import format_html
 from import_export import fields, resources
-from import_export.admin import ExportMixin
+from import_export.admin import ImportExportMixin
 
 from .models import Camera
 
@@ -27,6 +28,16 @@ class CameraResource(resources.ModelResource):
 
     def dehydrate_vetted_by_username(self, camera):
         return camera.vetted_by.username if camera.vetted_by_id else ""
+
+    def import_obj(self, obj, data, dry_run, **kwargs):
+        super().import_obj(obj, data, dry_run, **kwargs)
+        lat = data.get("latitude")
+        lon = data.get("longitude")
+        if lat and lon:
+            try:
+                obj.location = Point(float(lon), float(lat), srid=4326)
+            except (ValueError, TypeError):
+                pass
 
     class Meta:
         model = Camera
@@ -75,7 +86,7 @@ def mark_pending(modeladmin, request, queryset):
 
 
 @admin.register(Camera)
-class CameraAdmin(ExportMixin, GISModelAdmin):
+class CameraAdmin(ImportExportMixin, GISModelAdmin):
     """Admin interface for Camera model with map widget and export."""
 
     resource_class = CameraResource

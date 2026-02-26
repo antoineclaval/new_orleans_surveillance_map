@@ -974,7 +974,7 @@ prep_step_verify() {
 
     local i=0
     while [ $i -lt 12 ]; do
-        if curl -sf "https://$DOMAIN/" > /dev/null 2>&1; then
+        if curl -sf --max-time 10 "https://$DOMAIN/" > /dev/null 2>&1; then
             print_status "https://$DOMAIN/ is responding — deployment verified!"
             return 0
         fi
