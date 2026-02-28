@@ -170,6 +170,19 @@
             <span class="text-sm">Private Cameras Only</span>
         </label>
 
+        <div class="mb-3">
+            <label class="block text-xs text-gray-500 mb-1">Camera Type</label>
+            <select x-model="filters.cameraType"
+                    @change="applyFilters()"
+                    class="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-nola-purple">
+                <option value="">All Types</option>
+                <option value="project_nola">Project NOLA</option>
+                <option value="nopd">NOPD</option>
+                <option value="private">Private</option>
+                <option value="unknown">Unknown</option>
+            </select>
+        </div>
+
         <div class="pt-2 border-t border-gray-200">
             <button @click="resetFilters()"
                     class="text-sm text-nola-purple hover:text-purple-700">
@@ -213,6 +226,11 @@
                 </template>
                 <template x-if="selectedCamera?.properties?.associated_shop">
                     <span class="badge badge-shop" x-text="selectedCamera.properties.associated_shop"></span>
+                </template>
+                <template x-if="selectedCamera?.properties?.camera_type">
+                    <span class="badge"
+                          :style="`background-color: ${CAMERA_TYPE_COLORS[selectedCamera.properties.camera_type]}22; color: ${CAMERA_TYPE_COLORS[selectedCamera.properties.camera_type]};`"
+                          x-text="CAMERA_TYPE_LABELS[selectedCamera.properties.camera_type] || selectedCamera.properties.camera_type"></span>
                 </template>
             </div>
 
@@ -274,6 +292,34 @@ document.getElementById('filter-toggle').addEventListener('click', function() {
 
 {% block extra_js %}
 <script>
+const CAMERA_TYPE_COLORS = {
+    project_nola: '#6b46c1',
+    nopd:         '#2563eb',
+    private:      '#ea580c',
+    unknown:      '#6b7280',
+};
+
+const CAMERA_TYPE_LABELS = {
+    project_nola: 'Project NOLA',
+    nopd:         'NOPD',
+    private:      'Private',
+    unknown:      'Unknown',
+};
+
+function createMarkerIcon(cameraType, isFR) {
+    const color = CAMERA_TYPE_COLORS[cameraType] || CAMERA_TYPE_COLORS.unknown;
+    const frBadge = isFR
+        ? '<circle cx="19" cy="5" r="4" fill="#dc2626" stroke="white" stroke-width="1.5"/>'
+        : '';
+    return L.divIcon({
+        html: `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><circle cx="12" cy="12" r="10" fill="${color}" stroke="white" stroke-width="2"/>${frBadge}</svg>`,
+        className: '',
+        iconSize: [24, 24],
+        iconAnchor: [12, 12],
+        popupAnchor: [0, -12],
+    });
+}
+
 function cameraMap() {
     return {
         map: null,
@@ -286,7 +332,8 @@ function cameraMap() {
         cameraCount: 0,
         filters: {
             facialRecognition: false,
-            hasShop: false
+            hasShop: false,
+            cameraType: ''
         },
 
         get cameraImages() {
@@ -339,6 +386,9 @@ function cameraMap() {
                 if (this.filters.hasShop) {
                     params.append('has_shop', 'true');
                 }
+                if (this.filters.cameraType) {
+                    params.append('type', this.filters.cameraType);
+                }
 
                 if (params.toString()) {
                     url += '?' + params.toString();
@@ -364,12 +414,7 @@ function cameraMap() {
                 const props = camera.properties;
 
                 // Create custom icon
-                const iconClass = props.facial_recognition ? 'camera-marker camera-marker-fr' : 'camera-marker';
-                const icon = L.divIcon({
-                    className: iconClass,
-                    iconSize: [24, 24],
-                    iconAnchor: [12, 12]
-                });
+                const icon = createMarkerIcon(props.camera_type, props.facial_recognition);
 
                 const marker = L.marker([coords[1], coords[0]], { icon: icon });
 
@@ -402,6 +447,7 @@ function cameraMap() {
         resetFilters() {
             this.filters.facialRecognition = false;
             this.filters.hasShop = false;
+            this.filters.cameraType = '';
             this.loadCameras();
         },
 

@@ -15,6 +15,7 @@ class CameraListAPIView(generics.ListAPIView):
     Supports filtering via query parameters:
     - facial_recognition: true/false
     - has_shop: true/false
+    - type: project_nola/nopd/private/unknown
     """
 
     serializer_class = CameraGeoSerializer
@@ -36,6 +37,11 @@ class CameraListAPIView(generics.ListAPIView):
                 queryset = queryset.exclude(associated_shop="")
             else:
                 queryset = queryset.filter(associated_shop="")
+
+        # Filter by camera type
+        camera_type = self.request.query_params.get("type")
+        if camera_type:
+            queryset = queryset.filter(camera_type=camera_type)
 
         return queryset
 

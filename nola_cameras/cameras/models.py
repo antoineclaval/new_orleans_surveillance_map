@@ -20,6 +20,12 @@ class Camera(models.Model):
         PENDING = "pending", "Pending Review"
         REJECTED = "rejected", "Rejected"
 
+    class CameraType(models.TextChoices):
+        PROJECT_NOLA = "project_nola", "Project NOLA"
+        NOPD         = "nopd",         "NOPD"
+        PRIVATE      = "private",      "Private"
+        UNKNOWN      = "unknown",      "Unknown"
+
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
 
     # Location information
@@ -47,6 +53,14 @@ class Camera(models.Model):
         max_length=255,
         blank=True,
         help_text="Business name if this is a private camera",
+    )
+
+    # Camera type / operator
+    camera_type = models.CharField(
+        max_length=20,
+        choices=CameraType.choices,
+        default=CameraType.UNKNOWN,
+        db_index=True,
     )
 
     # Status and review

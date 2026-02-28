@@ -23,6 +23,7 @@ class CameraGeoSerializer(GeoFeatureModelSerializer):
             "street_address",
             "facial_recognition",
             "associated_shop",
+            "camera_type",
             "image",
             "image_2",
             "image_3",
@@ -47,6 +48,7 @@ class CameraDetailSerializer(serializers.ModelSerializer):
             "longitude",
             "facial_recognition",
             "associated_shop",
+            "camera_type",
             "image",
             "reported_at",
         ]

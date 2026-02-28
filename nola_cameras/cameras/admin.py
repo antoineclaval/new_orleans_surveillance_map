@@ -49,6 +49,7 @@ class CameraResource(resources.ModelResource):
             "longitude",
             "facial_recognition",
             "associated_shop",
+            "camera_type",
             "status",
             "reported_by",
             "reported_at",
@@ -94,6 +95,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     list_display = [
         "cross_road",
         "status_badge",
+        "camera_type_badge",
         "facial_recognition_badge",
         "associated_shop",
         "reported_at",
@@ -101,6 +103,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     ]
     list_filter = [
         "status",
+        "camera_type",
         "facial_recognition",
         ("vetted_at", admin.EmptyFieldListFilter),
         "reported_at",
@@ -135,6 +138,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
             "Camera Details",
             {
                 "fields": (
+                    "camera_type",
                     "facial_recognition",
                     "associated_shop",
                     "image",
@@ -201,6 +205,25 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
 
     status_badge.short_description = "Status"
     status_badge.admin_order_field = "status"
+
+    def camera_type_badge(self, obj):
+        """Display camera type as colored badge."""
+        colors = {
+            Camera.CameraType.PROJECT_NOLA: "#6b46c1",
+            Camera.CameraType.NOPD: "#2563eb",
+            Camera.CameraType.PRIVATE: "#ea580c",
+            Camera.CameraType.UNKNOWN: "#6b7280",
+        }
+        color = colors.get(obj.camera_type, "#6b7280")
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color,
+            obj.get_camera_type_display(),
+        )
+
+    camera_type_badge.short_description = "Type"
+    camera_type_badge.admin_order_field = "camera_type"
 
     def facial_recognition_badge(self, obj):
         """Display facial recognition status."""
