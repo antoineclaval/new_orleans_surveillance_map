@@ -93,6 +93,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     resource_class = CameraResource
 
     list_display = [
+        "short_id",
         "cross_road",
         "status_badge",
         "camera_type_badge",
@@ -101,6 +102,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         "reported_at",
         "image_preview",
     ]
+    list_display_links = ["short_id"]
     list_filter = [
         "status",
         "camera_type",
@@ -187,6 +189,12 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
             "default_zoom": 12,
         },
     }
+
+    def short_id(self, obj):
+        return str(obj.id)[:8]
+
+    short_id.short_description = "ID"
+    short_id.admin_order_field = "id"
 
     def status_badge(self, obj):
         """Display status as colored badge."""
