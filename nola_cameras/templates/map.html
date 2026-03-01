@@ -97,12 +97,17 @@
         justify-content: center;
         z-index: 1001;
     }
+
+    /* Pick-mode crosshair cursor */
+    #map.pick-mode,
+    #map.pick-mode .leaflet-marker-icon,
+    #map.pick-mode .leaflet-interactive { cursor: crosshair !important; }
 </style>
 {% endblock %}
 
 {% block body %}
 <!-- Navigation (same as base but with filters) -->
-<nav class="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-[1001]">
+<nav class="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-[1001]" x-data>
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex justify-between items-center h-14">
             <a href="{% url 'map' %}" class="flex items-center space-x-2">
@@ -121,11 +126,19 @@
                     </svg>
                     <span class="hidden sm:inline text-sm">Filters</span>
                 </button>
-                <a href="{% url 'report' %}"
-                   class="bg-nola-purple text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition">
-                    <span class="hidden sm:inline">Report Camera</span>
-                    <span class="sm:hidden">Report</span>
-                </a>
+                <template x-if="!$store.viewport.pickMode">
+                    <button @click="$store.viewport.triggerPickMode = true"
+                            class="bg-nola-purple text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-purple-700 transition">
+                        <span class="hidden sm:inline">Report Camera</span>
+                        <span class="sm:hidden">Report</span>
+                    </button>
+                </template>
+                <template x-if="$store.viewport.pickMode">
+                    <button @click="$store.viewport.triggerExitPickMode = true"
+                            class="bg-gray-200 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-300 transition">
+                        Cancel
+                    </button>
+                </template>
             </div>
         </div>
     </div>
@@ -142,6 +155,29 @@
             </svg>
             <span class="text-gray-600">Loading cameras...</span>
         </div>
+    </div>
+
+    <!-- Pick-mode instruction banner (shown before pin is dropped) -->
+    <div x-show="pickMode && $store.viewport.pinnedLat === null"
+         x-transition
+         style="display: none;"
+         class="absolute top-4 left-1/2 -translate-x-1/2 z-[1002] bg-white rounded-xl shadow-lg px-5 py-3 flex items-center gap-3 max-w-sm w-[calc(100%-2rem)]">
+        <p class="text-sm text-gray-700 flex-1">Click the map to mark the camera location</p>
+    </div>
+
+    <!-- Pick-mode continue banner (shown after pin is dropped) -->
+    <div x-show="pickMode && $store.viewport.pinnedLat !== null"
+         x-transition
+         style="display: none;"
+         class="absolute bottom-8 left-1/2 -translate-x-1/2 z-[1002] bg-nola-purple text-white rounded-xl shadow-lg px-5 py-3 flex items-center gap-3">
+        <span class="text-sm font-medium">📍 Location pinned</span>
+        <button @click="continueToReport()"
+                class="bg-white text-nola-purple px-4 py-1.5 rounded-lg text-sm font-semibold hover:bg-purple-50 transition">
+            Continue →
+        </button>
+        <button @click="exitPickMode()" class="text-purple-300 hover:text-white text-xs underline">
+            Cancel
+        </button>
     </div>
 
     <!-- Map -->
@@ -321,6 +357,21 @@ document.getElementById('filter-toggle').addEventListener('click', function() {
 
 {% block extra_js %}
 <script>
+document.addEventListener('alpine:init', () => {
+    Alpine.store('viewport', {
+        lat: 29.9511, lng: -90.0715, zoom: 12,
+        pickMode: false,
+        pinnedLat: null, pinnedLng: null,
+        triggerPickMode: false,
+        triggerExitPickMode: false,
+        get reportUrl() {
+            if (this.pinnedLat !== null)
+                return `/report/?lat=${this.pinnedLat.toFixed(6)}&lng=${this.pinnedLng.toFixed(6)}&zoom=${this.zoom}&pinned=1`;
+            return `/report/?lat=${this.lat.toFixed(6)}&lng=${this.lng.toFixed(6)}&zoom=${this.zoom}`;
+        }
+    });
+});
+
 const CAMERA_TYPE_COLORS = {
     project_nola: '#ea580c',
     nopd:         '#2563eb',
@@ -374,6 +425,8 @@ function cameraMap() {
         loading: true,
         showFilters: false,
         cameraCount: 0,
+        pickMode: false,
+        pickMarker: null,
         typeCounts: { project_nola: 0, nopd: 0, private: 0, unknown: 0 },
         hiddenTypes: { project_nola: false, nopd: false, private: false, unknown: false },
         filters: {
@@ -417,6 +470,30 @@ function cameraMap() {
                 });
                 this.map.addLayer(this.clusterGroups[type]);
             }
+
+            // Sync viewport store on pan/zoom
+            this.map.on('moveend', () => {
+                const center = this.map.getCenter();
+                Alpine.store('viewport').lat = center.lat;
+                Alpine.store('viewport').lng = center.lng;
+                Alpine.store('viewport').zoom = this.map.getZoom();
+            });
+
+            // Watch for pick mode trigger from nav button
+            this.$watch(() => Alpine.store('viewport').triggerPickMode, val => {
+                if (val) {
+                    Alpine.store('viewport').triggerPickMode = false;
+                    this.enterPickMode();
+                }
+            });
+
+            // Watch for exit pick mode trigger from nav cancel button
+            this.$watch(() => Alpine.store('viewport').triggerExitPickMode, val => {
+                if (val) {
+                    Alpine.store('viewport').triggerExitPickMode = false;
+                    this.exitPickMode();
+                }
+            });
 
             // Reset image index when a different camera is selected
             this.$watch('selectedCamera', () => { this.currentImageIndex = 0; });
@@ -489,6 +566,7 @@ function cameraMap() {
 
                 // Click handler to show detail panel
                 marker.on('click', () => {
+                    if (this.pickMode) return;
                     this.selectedCamera = camera;
                 });
 
@@ -529,6 +607,56 @@ function cameraMap() {
             } else {
                 this.map.addLayer(this.clusterGroups[type]);
             }
+        },
+
+        enterPickMode() {
+            this.pickMode = true;
+            Alpine.store('viewport').pickMode = true;
+            Alpine.store('viewport').pinnedLat = null;
+            Alpine.store('viewport').pinnedLng = null;
+            document.getElementById('map').classList.add('pick-mode');
+            this.map.once('click', (e) => {
+                if (this.pickMode) {
+                    this.dropPickMarker(e.latlng.lat, e.latlng.lng);
+                }
+            });
+        },
+
+        dropPickMarker(lat, lng) {
+            if (this.pickMarker) {
+                this.map.removeLayer(this.pickMarker);
+            }
+            const icon = L.divIcon({
+                html: `<svg width="28" height="28" viewBox="0 0 28 28" xmlns="http://www.w3.org/2000/svg"><circle cx="14" cy="14" r="12" fill="#f97316" stroke="white" stroke-width="2.5"/></svg>`,
+                className: '',
+                iconSize: [28, 28],
+                iconAnchor: [14, 14],
+            });
+            this.pickMarker = L.marker([lat, lng], { icon: icon, draggable: true }).addTo(this.map);
+            Alpine.store('viewport').pinnedLat = lat;
+            Alpine.store('viewport').pinnedLng = lng;
+            this.pickMarker.on('dragend', (e) => {
+                const pos = e.target.getLatLng();
+                Alpine.store('viewport').pinnedLat = pos.lat;
+                Alpine.store('viewport').pinnedLng = pos.lng;
+            });
+        },
+
+        exitPickMode() {
+            this.pickMode = false;
+            Alpine.store('viewport').pickMode = false;
+            Alpine.store('viewport').pinnedLat = null;
+            Alpine.store('viewport').pinnedLng = null;
+            if (this.pickMarker) {
+                this.map.removeLayer(this.pickMarker);
+                this.pickMarker = null;
+            }
+            document.getElementById('map').classList.remove('pick-mode');
+            this.map.off('click');
+        },
+
+        continueToReport() {
+            window.location.href = Alpine.store('viewport').reportUrl;
         },
 
         locateUser() {

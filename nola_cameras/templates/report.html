@@ -43,7 +43,10 @@
                 Camera Location <span class="text-red-500">*</span>
             </label>
             <div class="flex items-center gap-3 mb-2">
-                <p class="text-sm text-gray-500">Click on the map to set the camera location</p>
+                <p class="text-sm text-gray-500"
+                   x-text="latitude
+                       ? 'Location set — drag the marker to adjust.'
+                       : 'Click the map to set the camera location'"></p>
                 <button type="button"
                         @click="useMyLocation()"
                         :disabled="locating"
@@ -233,6 +236,14 @@
 
 {% block extra_js %}
 <script>
+const REPORT_MAP_CONFIG = {
+    lat: {{ init_lat }},
+    lng: {{ init_lng }},
+    zoom: {{ init_zoom }},
+    pinned: {{ pinned|yesno:"true,false" }}
+};
+</script>
+<script>
 function reportForm() {
     return {
         map: null,
@@ -246,13 +257,17 @@ function reportForm() {
         locationError: null,
 
         init() {
-            // Initialize map centered on New Orleans
-            this.map = L.map('location-map').setView([29.9511, -90.0715], 13);
+            const cfg = REPORT_MAP_CONFIG;
+            this.map = L.map('location-map').setView([cfg.lat, cfg.lng], cfg.zoom);
 
             L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
                 maxZoom: 19,
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(this.map);
+
+            if (cfg.pinned) {
+                this.setLocation(cfg.lat, cfg.lng);
+            }
 
             // Click handler to set marker
             this.map.on('click', (e) => {
