@@ -471,6 +471,9 @@ start_prod() {
     print_status "Running database migrations..."
     podman exec nola-web python manage.py migrate
 
+    print_status "Collecting static files..."
+    podman exec nola-web python manage.py collectstatic --noinput
+
     print_status "Production server running!"
     print_status "Access at https://${DOMAIN:-localhost}"
 }
@@ -514,6 +517,12 @@ update_prod() {
 
     print_status "Running database migrations..."
     podman exec nola-web python manage.py migrate
+
+    # collectstatic must run in the live container so it writes into the
+    # persistent containers_static_data volume (which overrides /app/staticfiles
+    # at runtime, hiding what was baked into the image at build time).
+    print_status "Collecting static files..."
+    podman exec nola-web python manage.py collectstatic --noinput
 
     print_status "Update complete — app running at https://${DOMAIN:-localhost}"
 }

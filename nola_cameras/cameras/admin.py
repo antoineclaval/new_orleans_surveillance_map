@@ -304,6 +304,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
 
 
 # Customize admin site
-admin.site.site_header = "New Orleans Camera Mapping Admin"
+admin.site.site_header = "New Orleans surveillance map admin"
 admin.site.site_title = "New Orleans Cameras"
 admin.site.index_title = "Camera Management"

@@ -1,4 +1,4 @@
-# New Orleans Camera Mapping
+# New Orleans surveillance mapping
 
 A web application to map surveillance cameras in New Orleans with three user types:
 - **Read-only viewers**: Browse the camera map
