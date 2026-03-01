@@ -270,8 +270,37 @@
         </div>
     </div>
 
-    <!-- Camera Count -->
+    <!-- Legend + Camera Count -->
     <div class="absolute bottom-4 left-4 z-[1000] flex flex-col gap-1">
+        <div x-show="!loading && legendEntries.length > 0"
+             class="bg-white rounded-lg shadow px-3 py-2 text-xs text-gray-600">
+            <template x-for="entry in legendEntries" :key="entry.type">
+                <div class="flex items-center gap-2 mb-1 last:mb-0">
+                    <span class="w-3 h-3 rounded-full flex-shrink-0 transition-opacity"
+                          :style="`background-color: ${CAMERA_TYPE_COLORS[entry.type]}`"
+                          :class="hiddenTypes[entry.type] ? 'opacity-30' : ''"></span>
+                    <span class="flex-1 transition-opacity"
+                          :class="hiddenTypes[entry.type] ? 'opacity-40' : ''"
+                          x-text="CAMERA_TYPE_LABELS[entry.type]"></span>
+                    <span class="font-medium transition-opacity"
+                          :class="hiddenTypes[entry.type] ? 'opacity-40' : ''"
+                          x-text="entry.count"></span>
+                    <button @click.stop="toggleType(entry.type)"
+                            class="ml-1 flex-shrink-0 text-gray-400 hover:text-gray-600 transition-colors"
+                            :title="hiddenTypes[entry.type] ? 'Show layer' : 'Hide layer'">
+                        <!-- Eye open -->
+                        <svg x-show="!hiddenTypes[entry.type]" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/>
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z"/>
+                        </svg>
+                        <!-- Eye crossed out -->
+                        <svg x-show="hiddenTypes[entry.type]" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21"/>
+                        </svg>
+                    </button>
+                </div>
+            </template>
+        </div>
         <div class="bg-white rounded-lg shadow px-3 py-2 text-sm text-gray-600">
             <span x-text="cameraCount"></span> cameras
         </div>
@@ -293,9 +322,9 @@ document.getElementById('filter-toggle').addEventListener('click', function() {
 {% block extra_js %}
 <script>
 const CAMERA_TYPE_COLORS = {
-    project_nola: '#6b46c1',
+    project_nola: '#ea580c',
     nopd:         '#2563eb',
-    private:      '#ea580c',
+    private:      '#d97706',
     unknown:      '#6b7280',
 };
 
@@ -320,20 +349,43 @@ function createMarkerIcon(cameraType, isFR) {
     });
 }
 
+function makeClusterIcon(color) {
+    return function(cluster) {
+        const count = cluster.getChildCount();
+        const size = count < 10 ? 30 : count < 100 ? 40 : 50;
+        const inner = size - 10;
+        const fontSize = count >= 100 ? 13 : 12;
+        return L.divIcon({
+            html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color}4d;display:flex;align-items:center;justify-content:center;"><div style="width:${inner}px;height:${inner}px;border-radius:50%;background:${color}cc;display:flex;align-items:center;justify-content:center;color:white;font-weight:700;font-size:${fontSize}px;">${count}</div></div>`,
+            className: '',
+            iconSize: [size, size],
+            iconAnchor: [size / 2, size / 2],
+        });
+    };
+}
+
 function cameraMap() {
     return {
         map: null,
-        markers: null,
+        clusterGroups: {},
         cameras: [],
         selectedCamera: null,
         currentImageIndex: 0,
         loading: true,
         showFilters: false,
         cameraCount: 0,
+        typeCounts: { project_nola: 0, nopd: 0, private: 0, unknown: 0 },
+        hiddenTypes: { project_nola: false, nopd: false, private: false, unknown: false },
         filters: {
             facialRecognition: false,
             hasShop: false,
             cameraType: ''
+        },
+
+        get legendEntries() {
+            return ['project_nola', 'nopd', 'private', 'unknown']
+                .filter(t => this.typeCounts[t] > 0 || this.hiddenTypes[t])
+                .map(t => ({ type: t, count: this.typeCounts[t] }));
         },
 
         get cameraImages() {
@@ -352,14 +404,19 @@ function cameraMap() {
                 attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
             }).addTo(this.map);
 
-            // Initialize marker cluster group
-            this.markers = L.markerClusterGroup({
-                maxClusterRadius: 50,
-                spiderfyOnMaxZoom: true,
-                showCoverageOnHover: false,
-                zoomToBoundsOnClick: true
-            });
-            this.map.addLayer(this.markers);
+            // Initialize per-type marker cluster groups
+            const TYPES = ['project_nola', 'nopd', 'private', 'unknown'];
+            this.clusterGroups = {};
+            for (const type of TYPES) {
+                this.clusterGroups[type] = L.markerClusterGroup({
+                    maxClusterRadius: 50,
+                    spiderfyOnMaxZoom: true,
+                    showCoverageOnHover: false,
+                    zoomToBoundsOnClick: true,
+                    iconCreateFunction: makeClusterIcon(CAMERA_TYPE_COLORS[type])
+                });
+                this.map.addLayer(this.clusterGroups[type]);
+            }
 
             // Reset image index when a different camera is selected
             this.$watch('selectedCamera', () => { this.currentImageIndex = 0; });
@@ -407,14 +464,26 @@ function cameraMap() {
         },
 
         renderMarkers() {
-            this.markers.clearLayers();
+            // Clear all cluster groups
+            for (const group of Object.values(this.clusterGroups)) {
+                group.clearLayers();
+            }
+
+            // Reset type counts
+            this.typeCounts = { project_nola: 0, nopd: 0, private: 0, unknown: 0 };
 
             this.cameras.forEach(camera => {
                 const coords = camera.geometry.coordinates;
                 const props = camera.properties;
+                const cameraType = props.camera_type || 'unknown';
+
+                // Track per-type counts
+                if (cameraType in this.typeCounts) {
+                    this.typeCounts[cameraType]++;
+                }
 
                 // Create custom icon
-                const icon = createMarkerIcon(props.camera_type, props.facial_recognition);
+                const icon = createMarkerIcon(cameraType, props.facial_recognition);
 
                 const marker = L.marker([coords[1], coords[0]], { icon: icon });
 
@@ -436,7 +505,9 @@ function cameraMap() {
                 `;
                 marker.bindPopup(popupContent);
 
-                this.markers.addLayer(marker);
+                // Route to the correct cluster group
+                const group = this.clusterGroups[cameraType] || this.clusterGroups['unknown'];
+                group.addLayer(marker);
             });
         },
 
@@ -449,6 +520,15 @@ function cameraMap() {
             this.filters.hasShop = false;
             this.filters.cameraType = '';
             this.loadCameras();
+        },
+
+        toggleType(type) {
+            this.hiddenTypes[type] = !this.hiddenTypes[type];
+            if (this.hiddenTypes[type]) {
+                this.map.removeLayer(this.clusterGroups[type]);
+            } else {
+                this.map.addLayer(this.clusterGroups[type]);
+            }
         },
 
         locateUser() {
