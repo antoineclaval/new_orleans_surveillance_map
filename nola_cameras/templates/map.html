@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load static %}
 
 {% block title %}New Orleans surveillance map{% endblock %}
 
@@ -110,13 +111,9 @@
 <nav class="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-[1001]" x-data>
     <div class="max-w-7xl mx-auto px-4">
         <div class="flex justify-between items-center h-14">
-            <a href="{% url 'map' %}" class="flex items-center space-x-2">
-                <svg class="w-6 h-6 text-nola-purple" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
-                          d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"/>
-                </svg>
-                <span class="font-semibold text-lg hidden sm:inline">New Orleans surveillance map</span>
-            </a>
+            <button @click="$store.infoOverlay.open = true" class="flex items-center" title="About & Announcements">
+                <img src="{% static 'images/eye-on-surveillance.png' %}" alt="Eye on Surveillance" class="h-9 w-auto">
+            </button>
             <div class="flex items-center space-x-2 sm:space-x-4">
                 <button id="filter-toggle"
                         class="flex items-center space-x-1 px-3 py-2 text-gray-600 hover:text-gray-900 rounded-lg hover:bg-gray-100">
@@ -348,6 +345,74 @@
     </div>
 </div>
 
+<!-- Info Overlay -->
+<div x-data
+     x-show="$store.infoOverlay.open"
+     x-transition
+     style="display:none;"
+     class="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/50"
+     @click.self="$store.infoOverlay.open = false">
+
+    <div class="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col overflow-hidden">
+
+        <!-- Header -->
+        <div class="flex items-center justify-between px-6 py-4 border-b border-gray-200">
+            <img src="{% static 'images/eye-on-surveillance.png' %}" alt="Eye on Surveillance" class="h-10 w-auto">
+            <button @click="$store.infoOverlay.open = false" class="text-gray-400 hover:text-gray-600">
+                <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                </svg>
+            </button>
+        </div>
+
+        <!-- Tabs -->
+        <div class="flex border-b border-gray-200 px-6">
+            <button @click="$store.infoOverlay.tab = 'about'"
+                    :class="$store.infoOverlay.tab === 'about' ? 'border-b-2 border-nola-purple text-nola-purple' : 'text-gray-500 hover:text-gray-700'"
+                    class="py-3 px-4 text-sm font-medium">About</button>
+            <button @click="$store.infoOverlay.tab = 'announcements'"
+                    :class="$store.infoOverlay.tab === 'announcements' ? 'border-b-2 border-nola-purple text-nola-purple' : 'text-gray-500 hover:text-gray-700'"
+                    class="py-3 px-4 text-sm font-medium">Announcements</button>
+        </div>
+
+        <!-- Content -->
+        <div class="overflow-y-auto flex-1 px-6 py-5">
+            <!-- About tab -->
+            <div x-show="$store.infoOverlay.tab === 'about'">
+                {% if site_info %}
+                    <div class="prose prose-sm max-w-none text-gray-700">{{ site_info.content|safe }}</div>
+                {% else %}
+                    <p class="text-gray-500 italic">No about text yet. Add it from the Django admin.</p>
+                {% endif %}
+                <div class="mt-5 pt-4 border-t border-gray-100">
+                    <label class="flex items-center gap-2 cursor-pointer select-none">
+                        <input type="checkbox"
+                               :checked="$store.infoOverlay.doNotShow"
+                               @change="$store.infoOverlay.setDoNotShow($event.target.checked)"
+                               class="rounded text-nola-purple">
+                        <span class="text-sm text-gray-500">Do not show again</span>
+                    </label>
+                </div>
+            </div>
+
+            <!-- Announcements tab -->
+            <div x-show="$store.infoOverlay.tab === 'announcements'">
+                {% if announcements %}
+                    {% for ann in announcements %}
+                    <div class="mb-6 {% if not forloop.last %}pb-6 border-b border-gray-100{% endif %}">
+                        <h3 class="font-semibold text-gray-900 mb-2">{{ ann.title }}</h3>
+                        <div class="prose prose-sm max-w-none text-gray-700">{{ ann.content|safe }}</div>
+                        <p class="text-xs text-gray-400 mt-2">{{ ann.published_at|date:"F j, Y" }}</p>
+                    </div>
+                    {% endfor %}
+                {% else %}
+                    <p class="text-gray-500 italic">No announcements yet.</p>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
 <script>
 document.getElementById('filter-toggle').addEventListener('click', function() {
     Alpine.store('map')?.toggleFilters?.() || document.querySelector('[x-data]').__x.$data.showFilters = !document.querySelector('[x-data]').__x.$data.showFilters;
@@ -369,6 +434,20 @@ document.addEventListener('alpine:init', () => {
                 return `/report/?lat=${this.pinnedLat.toFixed(6)}&lng=${this.pinnedLng.toFixed(6)}&zoom=${this.zoom}&pinned=1`;
             return `/report/?lat=${this.lat.toFixed(6)}&lng=${this.lng.toFixed(6)}&zoom=${this.zoom}`;
         }
+    });
+    Alpine.store('infoOverlay', {
+        open: localStorage.getItem('hide_about_section') !== '1',
+        tab: 'about',
+        get doNotShow() {
+            return localStorage.getItem('hide_about_section') === '1';
+        },
+        setDoNotShow(val) {
+            if (val) {
+                localStorage.setItem('hide_about_section', '1');
+            } else {
+                localStorage.removeItem('hide_about_section');
+            }
+        },
     });
 });
 

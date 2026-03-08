@@ -4,6 +4,7 @@ Camera model for New Orleans surveillance camera mapping.
 
 import uuid
 
+from ckeditor.fields import RichTextField
 from django.contrib.auth.models import User
 from django.contrib.gis.db import models
 from django.core.exceptions import ValidationError
@@ -153,3 +154,35 @@ class Camera(models.Model):
         self.vetted_at = timezone.now()
         self.vetted_by = user
         self.save()
+
+
+class AboutSection(models.Model):
+    """Singleton: project About/description text."""
+
+    content = RichTextField(
+        help_text="Description shown in the 'About' tab of the info overlay"
+    )
+
+    class Meta:
+        verbose_name = "About Section"
+        verbose_name_plural = "About Section"
+
+    def __str__(self):
+        return "About Section"
+
+
+class Announcement(models.Model):
+    """An individual announcement shown in the info overlay."""
+
+    title = models.CharField(max_length=255)
+    content = RichTextField()
+    published_at = models.DateTimeField(default=timezone.now)
+    is_active = models.BooleanField(default=True)
+
+    class Meta:
+        ordering = ["-published_at"]
+        verbose_name = "Announcement"
+        verbose_name_plural = "Announcements"
+
+    def __str__(self):
+        return self.title

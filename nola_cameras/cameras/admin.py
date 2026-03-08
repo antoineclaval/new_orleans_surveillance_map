@@ -10,7 +10,7 @@ from django.utils.html import format_html
 from import_export import fields, resources
 from import_export.admin import ImportExportMixin
 
-from .models import Camera
+from .models import AboutSection, Announcement, Camera
 
 
 class CameraResource(resources.ModelResource):
@@ -301,6 +301,23 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         """Show pending cameras first by default."""
         qs = super().get_queryset(request)
         return qs.select_related("vetted_by")
+
+
+@admin.register(AboutSection)
+class AboutSectionAdmin(admin.ModelAdmin):
+    def has_add_permission(self, request):
+        return not AboutSection.objects.exists()
+
+    def has_delete_permission(self, request, obj=None):
+        return False
+
+
+@admin.register(Announcement)
+class AnnouncementAdmin(admin.ModelAdmin):
+    list_display = ["title", "published_at", "is_active"]
+    list_filter = ["is_active"]
+    list_editable = ["is_active"]
+    date_hierarchy = "published_at"
 
 
 # Customize admin site
