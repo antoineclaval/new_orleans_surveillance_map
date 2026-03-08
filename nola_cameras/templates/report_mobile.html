@@ -161,7 +161,7 @@
                                 Photo 1 — Close-up of the camera
                                 <span class="text-red-500">*</span>
                             </p>
-                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to add photo</p>
                         </div>
                     </template>
                     <template x-if="imagePreview">
@@ -174,7 +174,6 @@
                            name="image"
                            id="id_image"
                            accept="image/*"
-                           capture="environment"
                            class="hidden"
                            @change="previewImage($event, 1)">
                 </label>
@@ -202,7 +201,7 @@
                                 Photo 2 — Camera and surroundings
                                 <span class="text-red-500">*</span>
                             </p>
-                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to add photo</p>
                         </div>
                     </template>
                     <template x-if="imagePreview2">
@@ -215,7 +214,6 @@
                            name="image_2"
                            id="id_image_2"
                            accept="image/*"
-                           capture="environment"
                            class="hidden"
                            @change="previewImage($event, 2)">
                 </label>
@@ -243,7 +241,7 @@
                                 Photo 3 — Project Nola sign
                                 <span class="text-gray-400 text-xs">(optional)</span>
                             </p>
-                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to take photo</p>
+                            <p class="mt-1 text-sm text-nola-purple font-medium">Tap to add photo</p>
                         </div>
                     </template>
                     <template x-if="imagePreview3">
@@ -256,7 +254,6 @@
                            name="image_3"
                            id="id_image_3"
                            accept="image/*"
-                           capture="environment"
                            class="hidden"
                            @change="previewImage($event, 3)">
                 </label>
