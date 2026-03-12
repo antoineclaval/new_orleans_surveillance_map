@@ -220,6 +220,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
             Camera.CameraType.PROJECT_NOLA: "#6b46c1",
             Camera.CameraType.NOPD: "#2563eb",
             Camera.CameraType.PRIVATE: "#ea580c",
+            Camera.CameraType.TRAFFIC: "#16a34a",
             Camera.CameraType.UNKNOWN: "#6b7280",
         }
         color = colors.get(obj.camera_type, "#6b7280")

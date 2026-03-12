@@ -209,10 +209,9 @@
                     @change="applyFilters()"
                     class="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-nola-purple">
                 <option value="">All Types</option>
-                <option value="project_nola">Project NOLA</option>
-                <option value="nopd">NOPD</option>
-                <option value="private">Private</option>
-                <option value="unknown">Unknown</option>
+                <template x-for="[value, label] in Object.entries(CAMERA_TYPE_LABELS)" :key="value">
+                    <option :value="value" x-text="label"></option>
+                </template>
             </select>
         </div>
 
@@ -455,6 +454,7 @@ const CAMERA_TYPE_COLORS = {
     project_nola: '#ea580c',
     nopd:         '#2563eb',
     private:      '#d97706',
+    traffic:      '#16a34a',
     unknown:      '#6b7280',
 };
 
@@ -462,8 +462,11 @@ const CAMERA_TYPE_LABELS = {
     project_nola: 'Project NOLA',
     nopd:         'NOPD',
     private:      'Private',
+    traffic:      'Traffic',
     unknown:      'Unknown',
 };
+
+const CAMERA_TYPES = Object.keys(CAMERA_TYPE_COLORS);
 
 function createMarkerIcon(cameraType, isFR) {
     const color = CAMERA_TYPE_COLORS[cameraType] || CAMERA_TYPE_COLORS.unknown;
@@ -506,8 +509,8 @@ function cameraMap() {
         cameraCount: 0,
         pickMode: false,
         pickMarker: null,
-        typeCounts: { project_nola: 0, nopd: 0, private: 0, unknown: 0 },
-        hiddenTypes: { project_nola: false, nopd: false, private: false, unknown: false },
+        typeCounts: Object.fromEntries(CAMERA_TYPES.map(t => [t, 0])),
+        hiddenTypes: Object.fromEntries(CAMERA_TYPES.map(t => [t, false])),
         filters: {
             facialRecognition: false,
             hasShop: false,
@@ -515,7 +518,7 @@ function cameraMap() {
         },
 
         get legendEntries() {
-            return ['project_nola', 'nopd', 'private', 'unknown']
+            return CAMERA_TYPES
                 .filter(t => this.typeCounts[t] > 0 || this.hiddenTypes[t])
                 .map(t => ({ type: t, count: this.typeCounts[t] }));
         },
@@ -537,7 +540,7 @@ function cameraMap() {
             }).addTo(this.map);
 
             // Initialize per-type marker cluster groups
-            const TYPES = ['project_nola', 'nopd', 'private', 'unknown'];
+            const TYPES = CAMERA_TYPES;
             this.clusterGroups = {};
             for (const type of TYPES) {
                 this.clusterGroups[type] = L.markerClusterGroup({
@@ -626,7 +629,7 @@ function cameraMap() {
             }
 
             // Reset type counts
-            this.typeCounts = { project_nola: 0, nopd: 0, private: 0, unknown: 0 };
+            this.typeCounts = Object.fromEntries(CAMERA_TYPES.map(t => [t, 0]));
 
             this.cameras.forEach(camera => {
                 const coords = camera.geometry.coordinates;

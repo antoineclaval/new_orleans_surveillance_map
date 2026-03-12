@@ -25,6 +25,7 @@ class Camera(models.Model):
         PROJECT_NOLA = "project_nola", "Project NOLA"
         NOPD         = "nopd",         "NOPD"
         PRIVATE      = "private",      "Private"
+        TRAFFIC      = "traffic",      "Traffic"
         UNKNOWN      = "unknown",      "Unknown"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
