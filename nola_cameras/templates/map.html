@@ -241,11 +241,21 @@
         <div class="p-4">
             <div class="flex justify-between items-start mb-3">
                 <h3 class="font-semibold text-lg" x-text="selectedCamera?.properties?.cross_road"></h3>
-                <button @click="selectedCamera = null" class="text-gray-400 hover:text-gray-600">
-                    <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
-                    </svg>
-                </button>
+                <div class="flex items-center gap-1 flex-shrink-0 ml-2">
+                    <button @click="copyDeepLink()" title="Copy link to this camera"
+                            class="text-gray-400 hover:text-gray-600 flex items-center">
+                        <span x-show="linkCopied" class="text-xs text-green-600 font-medium mr-1">Copied!</span>
+                        <svg x-show="!linkCopied" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                  d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"/>
+                        </svg>
+                    </button>
+                    <button @click="selectedCamera = null" class="text-gray-400 hover:text-gray-600">
+                        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+                        </svg>
+                    </button>
+                </div>
             </div>
 
             <template x-if="selectedCamera?.properties?.street_address">
@@ -506,6 +516,8 @@ function cameraMap() {
         currentImageIndex: 0,
         loading: true,
         showFilters: false,
+        deepLinkHandled: false,
+        linkCopied: false,
         cameraCount: 0,
         pickMode: false,
         pickMarker: null,
@@ -577,8 +589,17 @@ function cameraMap() {
                 }
             });
 
-            // Reset image index when a different camera is selected
-            this.$watch('selectedCamera', () => { this.currentImageIndex = 0; });
+            // Reset image index and sync URL when a different camera is selected
+            this.$watch('selectedCamera', (camera) => {
+                this.currentImageIndex = 0;
+                const url = new URL(window.location);
+                if (camera) {
+                    url.searchParams.set('camera', camera.id);
+                } else {
+                    url.searchParams.delete('camera');
+                }
+                history.replaceState(null, '', url);
+            });
 
             // Load cameras
             this.loadCameras();
@@ -615,6 +636,20 @@ function cameraMap() {
                 this.cameras = data.features || [];
                 this.cameraCount = this.cameras.length;
                 this.renderMarkers();
+
+                // Open camera from deep-link (only on first load)
+                if (!this.deepLinkHandled) {
+                    this.deepLinkHandled = true;
+                    const deepLinkId = new URLSearchParams(window.location.search).get('camera');
+                    if (deepLinkId) {
+                        const target = this.cameras.find(c => c.id === deepLinkId);
+                        if (target) {
+                            const coords = target.geometry.coordinates;
+                            this.map.setView([coords[1], coords[0]], 17);
+                            this.selectedCamera = target;
+                        }
+                    }
+                }
             } catch (error) {
                 console.error('Failed to load cameras:', error);
             } finally {
@@ -739,6 +774,12 @@ function cameraMap() {
 
         continueToReport() {
             window.location.href = Alpine.store('viewport').reportUrl;
+        },
+
+        copyDeepLink() {
+            navigator.clipboard.writeText(window.location.href);
+            this.linkCopied = true;
+            setTimeout(() => { this.linkCopied = false; }, 2000);
         },
 
         locateUser() {
