@@ -547,10 +547,11 @@ function cameraMap() {
             // Initialize map centered on New Orleans
             this.map = L.map('map').setView([29.9511, -90.0715], 12);
 
-            // Add OpenStreetMap tiles
-            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            // Add map tiles (Carto Voyager — production-safe, OSM data)
+            L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
                 maxZoom: 19,
-                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>',
+                subdomains: 'abcd',
             }).addTo(this.map);
 
             // Initialize per-type marker cluster groups
