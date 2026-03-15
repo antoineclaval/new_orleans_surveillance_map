@@ -26,9 +26,16 @@ class Camera(models.Model):
         NOPD         = "nopd",         "NOPD"
         PRIVATE      = "private",      "Private"
         TRAFFIC      = "traffic",      "Traffic"
+        ALPR         = "alpr",         "ALPR"
         UNKNOWN      = "unknown",      "Unknown"
 
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    osm_id = models.BigIntegerField(
+        null=True,
+        blank=True,
+        unique=True,
+        help_text="OpenStreetMap node ID (for deduplication and future OSM contribution)",
+    )
 
     # Location information
     cross_road = models.CharField(
@@ -63,6 +70,16 @@ class Camera(models.Model):
         choices=CameraType.choices,
         default=CameraType.UNKNOWN,
         db_index=True,
+    )
+    manufacturer = models.CharField(
+        max_length=255,
+        blank=True,
+        help_text="Camera manufacturer (e.g. 'Neology, Inc.')",
+    )
+    direction = models.CharField(
+        max_length=20,
+        blank=True,
+        help_text="Camera pointing direction in degrees (0-359) or cardinal",
     )
 
     # Status and review

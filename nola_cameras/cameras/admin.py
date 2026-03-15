@@ -43,6 +43,7 @@ class CameraResource(resources.ModelResource):
         model = Camera
         fields = (
             "id",
+            "osm_id",
             "cross_road",
             "street_address",
             "latitude",
@@ -50,6 +51,8 @@ class CameraResource(resources.ModelResource):
             "facial_recognition",
             "associated_shop",
             "camera_type",
+            "manufacturer",
+            "direction",
             "status",
             "reported_by",
             "reported_at",
@@ -116,6 +119,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         "associated_shop",
         "reported_by",
         "notes",
+        "osm_id",
     ]
     readonly_fields = [
         "id",
@@ -141,6 +145,8 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
             {
                 "fields": (
                     "camera_type",
+                    "manufacturer",
+                    "direction",
                     "facial_recognition",
                     "associated_shop",
                     "image",
@@ -175,7 +181,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         (
             "Metadata",
             {
-                "fields": ("id", "created_at", "updated_at"),
+                "fields": ("id", "osm_id", "created_at", "updated_at"),
                 "classes": ("collapse",),
             },
         ),
@@ -221,6 +227,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
             Camera.CameraType.NOPD: "#2563eb",
             Camera.CameraType.PRIVATE: "#ea580c",
             Camera.CameraType.TRAFFIC: "#16a34a",
+            Camera.CameraType.ALPR: "#b45309",
             Camera.CameraType.UNKNOWN: "#6b7280",
         }
         color = colors.get(obj.camera_type, "#6b7280")
