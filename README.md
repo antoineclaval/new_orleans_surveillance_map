@@ -3,17 +3,9 @@
 A web application to map surveillance cameras in New Orleans with three user types:
 - **Read-only viewers**: Browse the camera map
 - **Editors**: Submit new camera sightings for review
-- **Admins**: Review submissions, manage cameras (CRUD)
+- **Admins**: Review submissions, manage cameras
 
-## Features
-
-- Interactive map with camera locations using Leaflet.js and OpenStreetMap
-- Marker clustering for better visualization at different zoom levels
-- Filter cameras by facial recognition capability or private ownership
-- Mobile-responsive design with bottom sheet for camera details
-- Public submission form with map-based location picker
-- Django admin with map widget, bulk actions, and CSV/GeoJSON export
-- Containerized deployment with Podman
+Production : https://map.eyeonsurveillance.org/
 
 ## Tech Stack
 
@@ -24,7 +16,7 @@ A web application to map surveillance cameras in New Orleans with three user typ
 | Frontend | Leaflet.js, Alpine.js, Tailwind CSS |
 | Package Manager | [UV](https://github.com/astral-sh/uv)|
 | Containers | Podman, podman-compose |
-| Reverse Proxy | Caddy (production) |
+| Reverse Proxy | Caddy |
 
 ---
 
@@ -211,7 +203,7 @@ Access at http://localhost:8000
 Use /scripts/cloud-init.yml and feed it to your VPS provider.
 
 
-### 4. Create Admin User
+### 4. Create Admin User ( Django superadmin )
 
 ```bash
 ./scripts/setup.sh superuser
