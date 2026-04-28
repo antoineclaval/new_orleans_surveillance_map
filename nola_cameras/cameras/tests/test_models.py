@@ -2,9 +2,9 @@ from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 
-from cameras.models import Camera
+from cameras.models import Camera, CameraImage
 
-from .utils import make_camera
+from .utils import make_camera, make_camera_image
 
 
 class CameraDefaultStatusTest(TestCase):
@@ -46,3 +46,32 @@ class CameraApproveRejectTests(TestCase):
         self.assertEqual(self.camera.status, Camera.Status.REJECTED)
         self.assertEqual(self.camera.vetted_by, self.user)
         self.assertIsNotNone(self.camera.vetted_at)
+
+
+class CameraImageTests(TestCase):
+    def setUp(self):
+        self.camera = make_camera()
+        self.user = User.objects.create_user(username="reviewer", password="pass")
+
+    def test_default_status_is_pending(self):
+        img = CameraImage.objects.create(
+            camera=self.camera,
+            image="camera_images/test.jpg",
+        )
+        self.assertEqual(img.status, CameraImage.Status.PENDING)
+
+    def test_approve_sets_status_and_reviewer(self):
+        img = make_camera_image(self.camera, status=CameraImage.Status.PENDING)
+        img.approve(self.user)
+        img.refresh_from_db()
+        self.assertEqual(img.status, CameraImage.Status.APPROVED)
+        self.assertEqual(img.reviewed_by, self.user)
+        self.assertIsNotNone(img.reviewed_at)
+
+    def test_reject_sets_status_and_reviewer(self):
+        img = make_camera_image(self.camera, status=CameraImage.Status.PENDING)
+        img.reject(self.user)
+        img.refresh_from_db()
+        self.assertEqual(img.status, CameraImage.Status.REJECTED)
+        self.assertEqual(img.reviewed_by, self.user)
+        self.assertIsNotNone(img.reviewed_at)

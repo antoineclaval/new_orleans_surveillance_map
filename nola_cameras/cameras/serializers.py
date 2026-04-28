@@ -5,7 +5,7 @@ DRF serializers for camera API.
 from rest_framework import serializers
 from rest_framework_gis.serializers import GeoFeatureModelSerializer
 
-from .models import Camera
+from .models import Camera, CameraImage
 
 
 class CameraGeoSerializer(GeoFeatureModelSerializer):
@@ -13,6 +13,8 @@ class CameraGeoSerializer(GeoFeatureModelSerializer):
     GeoJSON serializer for cameras.
     Returns cameras as GeoJSON features for map display.
     """
+
+    photos = serializers.SerializerMethodField()
 
     class Meta:
         model = Camera
@@ -24,31 +26,17 @@ class CameraGeoSerializer(GeoFeatureModelSerializer):
             "facial_recognition",
             "associated_shop",
             "camera_type",
-            "image",
-            "image_2",
-            "image_3",
+            "photos",
         ]
 
-
-class CameraDetailSerializer(serializers.ModelSerializer):
-    """
-    Detailed serializer for single camera view.
-    """
-
-    latitude = serializers.FloatField(read_only=True)
-    longitude = serializers.FloatField(read_only=True)
-
-    class Meta:
-        model = Camera
-        fields = [
-            "id",
-            "cross_road",
-            "street_address",
-            "latitude",
-            "longitude",
-            "facial_recognition",
-            "associated_shop",
-            "camera_type",
-            "image",
-            "reported_at",
-        ]
+    def get_photos(self, obj):
+        request = self.context.get("request")
+        imgs = getattr(obj, "_approved_images", None)
+        if imgs is None:
+            imgs = list(obj.images.filter(status=CameraImage.Status.APPROVED))
+        result = []
+        for img in imgs:
+            if img.image:
+                url = request.build_absolute_uri(img.image.url) if request else img.image.url
+                result.append({"url": url, "type": img.photo_type})
+        return result

@@ -5,12 +5,13 @@ Django admin configuration for Camera model.
 from django.contrib import admin
 from django.contrib.gis.admin import GISModelAdmin
 from django.contrib.gis.geos import Point
+from django.urls import reverse
 from django.utils import timezone
 from django.utils.html import format_html
 from import_export import fields, resources
 from import_export.admin import ImportExportMixin
 
-from .models import AboutSection, Announcement, Camera
+from .models import AboutSection, Announcement, Camera, CameraImage
 
 
 class CameraResource(resources.ModelResource):
@@ -65,28 +66,53 @@ class CameraResource(resources.ModelResource):
 
 @admin.action(description="Approve selected cameras")
 def approve_cameras(modeladmin, request, queryset):
-    """Bulk approve selected cameras."""
     for camera in queryset:
-        camera.status = Camera.Status.VETTED
-        camera.vetted_at = timezone.now()
-        camera.vetted_by = request.user
-        camera.save()
+        camera.approve(request.user)
+        camera.images.filter(status=CameraImage.Status.PENDING).update(
+            status=CameraImage.Status.APPROVED,
+            reviewed_at=timezone.now(),
+            reviewed_by=request.user,
+        )
 
 
 @admin.action(description="Reject selected cameras")
 def reject_cameras(modeladmin, request, queryset):
-    """Bulk reject selected cameras."""
     for camera in queryset:
-        camera.status = Camera.Status.REJECTED
-        camera.vetted_at = timezone.now()
-        camera.vetted_by = request.user
-        camera.save()
+        camera.reject(request.user)
 
 
 @admin.action(description="Mark as pending review")
 def mark_pending(modeladmin, request, queryset):
-    """Mark selected cameras as pending."""
     queryset.update(status=Camera.Status.PENDING, vetted_at=None, vetted_by=None)
+
+
+@admin.action(description="Approve selected images")
+def approve_images(modeladmin, request, queryset):
+    for img in queryset:
+        img.approve(request.user)
+
+
+@admin.action(description="Reject selected images")
+def reject_images(modeladmin, request, queryset):
+    for img in queryset:
+        img.reject(request.user)
+
+
+class CameraImageInline(admin.TabularInline):
+    model = CameraImage
+    extra = 1
+    readonly_fields = ["image_preview_inline", "proposed_at", "proposed_by", "reviewed_at", "reviewed_by"]
+    fields = ["image_preview_inline", "image", "photo_type", "status", "proposed_by", "proposed_at", "reviewed_at", "reviewed_by"]
+    show_change_link = True
+
+    def image_preview_inline(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 80px; max-width: 120px; object-fit: cover;"/>',
+                obj.image.url,
+            )
+        return "-"
+    image_preview_inline.short_description = "Preview"
 
 
 @admin.register(Camera)
@@ -94,6 +120,7 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     """Admin interface for Camera model with map widget and export."""
 
     resource_class = CameraResource
+    inlines = [CameraImageInline]
 
     list_display = [
         "short_id",
@@ -126,9 +153,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         "created_at",
         "updated_at",
         "reported_at",
-        "image_preview_large",
-        "image_preview_large_2",
-        "image_preview_large_3",
     ]
     date_hierarchy = "reported_at"
     actions = [approve_cameras, reject_cameras, mark_pending]
@@ -149,12 +173,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
                     "direction",
                     "facial_recognition",
                     "associated_shop",
-                    "image",
-                    "image_preview_large",
-                    "image_2",
-                    "image_preview_large_2",
-                    "image_3",
-                    "image_preview_large_3",
                 ),
             },
         ),
@@ -187,10 +205,9 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
         ),
     )
 
-    # OpenStreetMap as default map widget
     gis_widget_kwargs = {
         "attrs": {
-            "default_lat": 29.9511,  # New Orleans center
+            "default_lat": 29.9511,
             "default_lon": -90.0715,
             "default_zoom": 12,
         },
@@ -203,7 +220,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     short_id.admin_order_field = "id"
 
     def status_badge(self, obj):
-        """Display status as colored badge."""
         colors = {
             Camera.Status.VETTED: "#22c55e",
             Camera.Status.PENDING: "#eab308",
@@ -221,7 +237,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     status_badge.admin_order_field = "status"
 
     def camera_type_badge(self, obj):
-        """Display camera type as colored badge."""
         colors = {
             Camera.CameraType.PROJECT_NOLA: "#6b46c1",
             Camera.CameraType.NOPD: "#2563eb",
@@ -242,7 +257,6 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     camera_type_badge.admin_order_field = "camera_type"
 
     def facial_recognition_badge(self, obj):
-        """Display facial recognition status."""
         if obj.facial_recognition:
             return format_html(
                 '<span style="background-color: #dc2626; color: white; padding: 3px 8px; '
@@ -254,61 +268,106 @@ class CameraAdmin(ImportExportMixin, GISModelAdmin):
     facial_recognition_badge.admin_order_field = "facial_recognition"
 
     def image_preview(self, obj):
-        """Display thumbnail in list view (first available image)."""
-        img = obj.image or obj.image_2 or obj.image_3
-        if img:
+        first = obj.images.filter(status=CameraImage.Status.APPROVED).first() or obj.images.first()
+        if first and first.image:
             return format_html(
                 '<img src="{}" style="max-height: 40px; max-width: 60px; object-fit: cover;"/>',
-                img.url,
+                first.image.url,
             )
         return "-"
 
     image_preview.short_description = "Photo"
 
+    def save_model(self, request, obj, form, change):
+        if obj.status == Camera.Status.VETTED and not obj.vetted_by:
+            obj.vetted_by = request.user
+            obj.vetted_at = timezone.now()
+        super().save_model(request, obj, form, change)
+        if obj.status == Camera.Status.VETTED:
+            obj.images.filter(status=CameraImage.Status.PENDING).update(
+                status=CameraImage.Status.APPROVED,
+                reviewed_at=timezone.now(),
+                reviewed_by=request.user,
+            )
+
+    def get_queryset(self, request):
+        qs = super().get_queryset(request)
+        return qs.select_related("vetted_by")
+
+
+@admin.register(CameraImage)
+class CameraImageAdmin(admin.ModelAdmin):
+    list_display = [
+        "short_id",
+        "camera_link",
+        "photo_type",
+        "status_badge",
+        "proposed_by",
+        "proposed_at",
+        "image_preview",
+    ]
+    list_filter = ["status", "photo_type", "proposed_at"]
+    search_fields = ["camera__cross_road", "camera__street_address", "proposed_by"]
+    readonly_fields = ["id", "proposed_at", "reviewed_at", "reviewed_by", "image_preview_large"]
+    actions = [approve_images, reject_images]
+    date_hierarchy = "proposed_at"
+
+    fieldsets = (
+        ("Photo", {"fields": ("camera", "image", "image_preview_large", "photo_type")}),
+        ("Status", {"fields": ("status", "notes")}),
+        ("Proposer Information", {"fields": ("proposed_by", "proposed_at"), "classes": ("collapse",)}),
+        ("Review Information", {"fields": ("reviewed_at", "reviewed_by"), "classes": ("collapse",)}),
+        ("Metadata", {"fields": ("id",), "classes": ("collapse",)}),
+    )
+
+    def short_id(self, obj):
+        return str(obj.id)[:8]
+    short_id.short_description = "ID"
+
+    def camera_link(self, obj):
+        url = reverse("admin:cameras_camera_change", args=[obj.camera_id])
+        return format_html('<a href="{}">{}</a>', url, obj.camera)
+    camera_link.short_description = "Camera"
+
+    def status_badge(self, obj):
+        colors = {
+            CameraImage.Status.APPROVED: "#22c55e",
+            CameraImage.Status.PENDING:  "#eab308",
+            CameraImage.Status.REJECTED: "#ef4444",
+        }
+        color = colors.get(obj.status, "#6b7280")
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color,
+            obj.get_status_display(),
+        )
+    status_badge.short_description = "Status"
+    status_badge.admin_order_field = "status"
+
+    def image_preview(self, obj):
+        if obj.image:
+            return format_html(
+                '<img src="{}" style="max-height: 40px; max-width: 60px; object-fit: cover;"/>',
+                obj.image.url,
+            )
+        return "-"
+    image_preview.short_description = "Photo"
+
     def image_preview_large(self, obj):
-        """Display larger image in detail view."""
         if obj.image:
             return format_html(
                 '<img src="{}" style="max-height: 300px; max-width: 400px;"/>',
                 obj.image.url,
             )
         return "No image uploaded"
-
-    image_preview_large.short_description = "Image Preview"
-
-    def image_preview_large_2(self, obj):
-        """Display second image in detail view."""
-        if obj.image_2:
-            return format_html(
-                '<img src="{}" style="max-height: 300px; max-width: 400px;"/>',
-                obj.image_2.url,
-            )
-        return "No image uploaded"
-
-    image_preview_large_2.short_description = "Image 2 Preview"
-
-    def image_preview_large_3(self, obj):
-        """Display third image in detail view."""
-        if obj.image_3:
-            return format_html(
-                '<img src="{}" style="max-height: 300px; max-width: 400px;"/>',
-                obj.image_3.url,
-            )
-        return "No image uploaded"
-
-    image_preview_large_3.short_description = "Image 3 Preview"
+    image_preview_large.short_description = "Preview"
 
     def save_model(self, request, obj, form, change):
-        """Auto-fill vetted_by when status changes to vetted."""
-        if obj.status == Camera.Status.VETTED and not obj.vetted_by:
-            obj.vetted_by = request.user
-            obj.vetted_at = timezone.now()
+        if obj.status == CameraImage.Status.APPROVED and not obj.reviewed_by:
+            obj.reviewed_by = request.user
+            obj.reviewed_at = timezone.now()
         super().save_model(request, obj, form, change)
-
-    def get_queryset(self, request):
-        """Show pending cameras first by default."""
-        qs = super().get_queryset(request)
-        return qs.select_related("vetted_by")
 
 
 @admin.register(AboutSection)

@@ -8,5 +8,4 @@ from . import api
 
 urlpatterns = [
     path("cameras/", api.CameraListAPIView.as_view(), name="camera-list"),
-    path("cameras/<uuid:id>/", api.CameraDetailAPIView.as_view(), name="camera-detail"),
 ]

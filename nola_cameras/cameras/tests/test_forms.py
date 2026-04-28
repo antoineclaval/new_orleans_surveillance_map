@@ -1,7 +1,11 @@
-from django.test import TestCase
+import tempfile
 
-from cameras.forms import CameraReportForm
-from cameras.models import Camera
+from django.test import TestCase, override_settings
+
+from cameras.forms import CameraReportForm, PhotoProposalForm
+from cameras.models import Camera, CameraImage
+
+from .utils import make_camera, make_image_file
 
 VALID_DATA = {
     "cross_road": "Bourbon St & St Peter St",
@@ -45,3 +49,41 @@ class CameraReportFormTests(TestCase):
         camera = form.save()
         self.assertAlmostEqual(camera.location.y, 29.9585, places=4)
         self.assertAlmostEqual(camera.location.x, -90.0644, places=4)
+
+
+@override_settings(MEDIA_ROOT=tempfile.mkdtemp())
+class PhotoProposalFormTests(TestCase):
+    def setUp(self):
+        self.camera = make_camera()
+
+    def test_valid_form_is_valid(self):
+        form = PhotoProposalForm(
+            data={"photo_type": CameraImage.PhotoType.CLOSE_UP, "proposed_by": "", "website": ""},
+            files={"image": make_image_file()},
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_honeypot_filled_is_invalid(self):
+        form = PhotoProposalForm(
+            data={"photo_type": CameraImage.PhotoType.CLOSE_UP, "proposed_by": "", "website": "spam"},
+            files={"image": make_image_file()},
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_missing_image_is_invalid(self):
+        form = PhotoProposalForm(
+            data={"photo_type": CameraImage.PhotoType.CLOSE_UP, "proposed_by": "", "website": ""},
+        )
+        self.assertFalse(form.is_valid())
+
+    def test_save_creates_pending_image_for_camera(self):
+        form = PhotoProposalForm(
+            data={"photo_type": CameraImage.PhotoType.SURROUNDING, "proposed_by": "tester@example.com", "website": ""},
+            files={"image": make_image_file()},
+        )
+        self.assertTrue(form.is_valid(), form.errors)
+        img = form.save(camera=self.camera)
+        self.assertEqual(img.status, CameraImage.Status.PENDING)
+        self.assertEqual(img.camera, self.camera)
+        self.assertEqual(img.photo_type, CameraImage.PhotoType.SURROUNDING)
+        self.assertEqual(img.proposed_by, "tester@example.com")

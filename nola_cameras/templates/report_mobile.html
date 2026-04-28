@@ -148,7 +148,7 @@
 
             <!-- Photo 1: Close-up (required) -->
             <div class="photo-card mb-3" :class="{ 'has-photo': imagePreview }">
-                <label for="id_image" class="block cursor-pointer">
+                <label for="id_image_close_up" class="block cursor-pointer">
                     <template x-if="!imagePreview">
                         <div>
                             <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -171,8 +171,8 @@
                         </div>
                     </template>
                     <input type="file"
-                           name="image"
-                           id="id_image"
+                           name="image_close_up"
+                           id="id_image_close_up"
                            accept="image/*"
                            class="hidden"
                            @change="previewImage($event, 1)">
@@ -188,7 +188,7 @@
 
             <!-- Photo 2: Surroundings (required) -->
             <div class="photo-card mb-3" :class="{ 'has-photo': imagePreview2 }">
-                <label for="id_image_2" class="block cursor-pointer">
+                <label for="id_image_surrounding" class="block cursor-pointer">
                     <template x-if="!imagePreview2">
                         <div>
                             <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -211,8 +211,8 @@
                         </div>
                     </template>
                     <input type="file"
-                           name="image_2"
-                           id="id_image_2"
+                           name="image_surrounding"
+                           id="id_image_surrounding"
                            accept="image/*"
                            class="hidden"
                            @change="previewImage($event, 2)">
@@ -228,7 +228,7 @@
 
             <!-- Photo 3: Project Nola sign (optional) -->
             <div class="photo-card" :class="{ 'has-photo': imagePreview3 }">
-                <label for="id_image_3" class="block cursor-pointer">
+                <label for="id_image_project_nola_sign" class="block cursor-pointer">
                     <template x-if="!imagePreview3">
                         <div>
                             <svg class="w-10 h-10 mx-auto text-gray-400 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -251,8 +251,8 @@
                         </div>
                     </template>
                     <input type="file"
-                           name="image_3"
-                           id="id_image_3"
+                           name="image_project_nola_sign"
+                           id="id_image_project_nola_sign"
                            accept="image/*"
                            class="hidden"
                            @change="previewImage($event, 3)">
@@ -411,13 +411,13 @@ function reportForm() {
         clearImage(slot) {
             if (slot === 2) {
                 this.imagePreview2 = null;
-                document.getElementById('id_image_2').value = '';
+                document.getElementById('id_image_surrounding').value = '';
             } else if (slot === 3) {
                 this.imagePreview3 = null;
-                document.getElementById('id_image_3').value = '';
+                document.getElementById('id_image_project_nola_sign').value = '';
             } else {
                 this.imagePreview = null;
-                document.getElementById('id_image').value = '';
+                document.getElementById('id_image_close_up').value = '';
             }
         },
 

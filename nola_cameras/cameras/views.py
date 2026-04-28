@@ -2,11 +2,12 @@
 Views for camera mapping application.
 """
 
+from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import FormView, TemplateView
 
-from .forms import CameraReportForm
-from .models import AboutSection, Announcement, Camera
+from .forms import CameraReportForm, PhotoProposalForm
+from .models import AboutSection, Announcement, Camera, CameraImage
 
 _MOBILE_UA_KEYWORDS = ("mobile", "android", "iphone", "ipad", "ipod")
 
@@ -60,7 +61,22 @@ class CameraReportView(FormView):
         return context
 
     def form_valid(self, form):
-        form.save()
+        camera = form.save()
+        type_map = [
+            ("image_close_up",          CameraImage.PhotoType.CLOSE_UP),
+            ("image_surrounding",       CameraImage.PhotoType.SURROUNDING),
+            ("image_project_nola_sign", CameraImage.PhotoType.PROJECT_NOLA_SIGN),
+        ]
+        for field_name, photo_type in type_map:
+            img = form.cleaned_data.get(field_name)
+            if img:
+                CameraImage.objects.create(
+                    camera=camera,
+                    image=img,
+                    photo_type=photo_type,
+                    status=CameraImage.Status.PENDING,
+                    proposed_by=form.cleaned_data.get("reported_by", ""),
+                )
         return super().form_valid(form)
 
 
@@ -70,3 +86,43 @@ class ReportSuccessView(TemplateView):
     """
 
     template_name = "report_success.html"
+
+
+class ProposePhotoView(FormView):
+    """
+    Public form to propose a photo for an existing vetted camera.
+    """
+
+    template_name = "propose_photo.html"
+    form_class = PhotoProposalForm
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.camera = get_object_or_404(Camera, pk=kwargs["camera_id"], status=Camera.Status.VETTED)
+
+    def get_success_url(self):
+        return reverse_lazy("propose-photo-success", kwargs={"camera_id": self.camera.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["camera"] = self.camera
+        return context
+
+    def form_valid(self, form):
+        form.save(camera=self.camera)
+        return super().form_valid(form)
+
+
+class ProposePhotoSuccessView(TemplateView):
+    """
+    Success page after photo proposal submission.
+    """
+
+    template_name = "propose_photo_success.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["camera"] = get_object_or_404(
+            Camera, pk=kwargs["camera_id"], status=Camera.Status.VETTED
+        )
+        return context

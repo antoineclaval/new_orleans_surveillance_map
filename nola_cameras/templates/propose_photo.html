@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}Propose a Photo - New Orleans surveillance map{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <div class="mb-6">
+        <a href="{% url 'map' %}?camera={{ camera.id }}"
+           class="text-sm text-nola-purple hover:text-purple-700 font-medium inline-flex items-center gap-1 mb-4">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to map
+        </a>
+        <h1 class="text-2xl font-bold text-gray-900 mb-1">Propose a Photo</h1>
+        <p class="text-gray-600">
+            Camera: <span class="font-medium text-gray-800">{{ camera.cross_road|default:camera.street_address|default:camera.associated_shop }}</span>
+        </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <p class="text-sm text-gray-500 mb-6">
+            Your photo will be reviewed by our team before appearing on the map.
+        </p>
+
+        {% if form.non_field_errors %}
+        <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            {% for error in form.non_field_errors %}
+            <p class="text-sm text-red-600">{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post"
+              enctype="multipart/form-data"
+              x-data="{
+                  imagePreview: null,
+                  previewImage(event) {
+                      const file = event.target.files[0];
+                      if (file) {
+                          const reader = new FileReader();
+                          reader.onload = e => { this.imagePreview = e.target.result; };
+                          reader.readAsDataURL(file);
+                      }
+                  },
+                  clearImage() {
+                      this.imagePreview = null;
+                      document.getElementById('id_image').value = '';
+                  }
+              }">
+            {% csrf_token %}
+
+            <!-- Honeypot -->
+            <div style="position: absolute; left: -9999px;" aria-hidden="true">
+                {{ form.website }}
+            </div>
+
+            <!-- Photo upload -->
+            <div class="mb-5">
+                <label class="block text-sm font-medium text-gray-700 mb-2">
+                    Photo <span class="text-red-500">*</span>
+                </label>
+                <input type="file"
+                       name="image"
+                       id="id_image"
+                       accept="image/*"
+                       required
+                       class="form-file block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-nola-purple file:text-white hover:file:bg-purple-700 cursor-pointer"
+                       @change="previewImage($event)">
+                {% if form.image.errors %}
+                <p class="text-sm text-red-600 mt-1">{{ form.image.errors.0 }}</p>
+                {% endif %}
+                <div x-show="imagePreview" class="mt-3">
+                    <img :src="imagePreview" alt="Preview" class="max-h-48 rounded-lg border border-gray-200">
+                    <button type="button"
+                            @click="clearImage()"
+                            class="mt-2 text-sm text-red-500 hover:text-red-700">
+                        Remove image
+                    </button>
+                </div>
+            </div>
+
+            <!-- Photo type -->
+            <div class="mb-5">
+                <label for="id_photo_type" class="block text-sm font-medium text-gray-700 mb-2">
+                    Photo type
+                </label>
+                <select name="photo_type"
+                        id="id_photo_type"
+                        class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nola-purple focus:border-transparent">
+                    {% for value, label in form.fields.photo_type.choices %}
+                    <option value="{{ value }}"{% if form.photo_type.value == value %} selected{% endif %}>{{ label }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+
+            <!-- Proposed by -->
+            <div class="mb-6">
+                <label for="id_proposed_by" class="block text-sm font-medium text-gray-700 mb-2">
+                    Your name or email <span class="text-gray-400">(optional)</span>
+                </label>
+                <input type="text"
+                       name="proposed_by"
+                       id="id_proposed_by"
+                       value="{{ form.proposed_by.value|default:'' }}"
+                       placeholder="Your email or name (optional)"
+                       class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nola-purple focus:border-transparent">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-nola-purple text-white py-3 px-6 rounded-lg font-medium hover:bg-purple-700 transition">
+                Submit Photo
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

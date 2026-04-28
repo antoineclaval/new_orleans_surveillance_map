@@ -5,7 +5,7 @@ Forms for camera submission.
 from django import forms
 from django.contrib.gis.geos import Point
 
-from .models import Camera
+from .models import Camera, CameraImage
 
 
 class CameraReportForm(forms.ModelForm):
@@ -25,7 +25,6 @@ class CameraReportForm(forms.ModelForm):
         label="",
     )
 
-    # Latitude and longitude fields for map picker
     latitude = forms.FloatField(
         widget=forms.HiddenInput(),
         min_value=-90,
@@ -37,6 +36,20 @@ class CameraReportForm(forms.ModelForm):
         max_value=180,
     )
 
+    # Image slots — not model fields, handled in view
+    image_close_up = forms.ImageField(
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
+    )
+    image_surrounding = forms.ImageField(
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
+    )
+    image_project_nola_sign = forms.ImageField(
+        required=False,
+        widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
+    )
+
     class Meta:
         model = Camera
         fields = [
@@ -45,9 +58,6 @@ class CameraReportForm(forms.ModelForm):
             "facial_recognition",
             "associated_shop",
             "reported_by",
-            "image",
-            "image_2",
-            "image_3",
         ]
         widgets = {
             "cross_road": forms.TextInput(attrs={
@@ -69,18 +79,6 @@ class CameraReportForm(forms.ModelForm):
             "facial_recognition": forms.CheckboxInput(attrs={
                 "class": "form-checkbox",
             }),
-            "image": forms.FileInput(attrs={
-                "class": "form-file",
-                "accept": "image/*",
-            }),
-            "image_2": forms.FileInput(attrs={
-                "class": "form-file",
-                "accept": "image/*",
-            }),
-            "image_3": forms.FileInput(attrs={
-                "class": "form-file",
-                "accept": "image/*",
-            }),
         }
 
     def clean(self):
@@ -90,7 +88,6 @@ class CameraReportForm(forms.ModelForm):
         if cleaned_data.get("website"):
             raise forms.ValidationError("Spam detected.")
 
-        # Create Point from lat/lng
         latitude = cleaned_data.get("latitude")
         longitude = cleaned_data.get("longitude")
 
@@ -105,6 +102,45 @@ class CameraReportForm(forms.ModelForm):
         instance = super().save(commit=False)
         instance.location = self.cleaned_data["location"]
         instance.status = Camera.Status.PENDING
+        if commit:
+            instance.save()
+        return instance
+
+
+class PhotoProposalForm(forms.ModelForm):
+    """Form for proposing a new photo to an existing vetted camera."""
+
+    website = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off",
+            "tabindex": "-1",
+            "style": "position: absolute; left: -9999px;",
+        }),
+        label="",
+    )
+
+    class Meta:
+        model = CameraImage
+        fields = ["image", "photo_type", "proposed_by"]
+        widgets = {
+            "image": forms.FileInput(attrs={"accept": "image/*"}),
+            "proposed_by": forms.TextInput(attrs={
+                "class": "form-input",
+                "placeholder": "Your email or name (optional)",
+            }),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("website"):
+            raise forms.ValidationError("Spam detected.")
+        return cleaned_data
+
+    def save(self, camera, commit=True):
+        instance = super().save(commit=False)
+        instance.camera = camera
+        instance.status = CameraImage.Status.PENDING
         if commit:
             instance.save()
         return instance

@@ -112,26 +112,6 @@ class Camera(models.Model):
         related_name="vetted_cameras",
     )
 
-    # Image upload
-    image = models.ImageField(
-        upload_to="camera_images/%Y/%m/",
-        blank=True,
-        null=True,
-        help_text="Photo of the camera",
-    )
-    image_2 = models.ImageField(
-        upload_to="camera_images/%Y/%m/",
-        blank=True,
-        null=True,
-        help_text="Photo of the camera and its surroundings",
-    )
-    image_3 = models.ImageField(
-        upload_to="camera_images/%Y/%m/",
-        blank=True,
-        null=True,
-        help_text="Photo of a Project Nola sign (if present)",
-    )
-
     # Timestamps
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -171,6 +151,51 @@ class Camera(models.Model):
         self.status = self.Status.REJECTED
         self.vetted_at = timezone.now()
         self.vetted_by = user
+        self.save()
+
+
+class CameraImage(models.Model):
+    class Status(models.TextChoices):
+        PENDING  = "pending",  "Pending Review"
+        APPROVED = "approved", "Approved"
+        REJECTED = "rejected", "Rejected"
+
+    class PhotoType(models.TextChoices):
+        SURROUNDING       = "surrounding",       "Surrounding"
+        CLOSE_UP          = "close_up",          "Close Up"
+        PROJECT_NOLA_SIGN = "project_nola_sign", "Project NOLA Sign"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    camera      = models.ForeignKey(Camera, on_delete=models.CASCADE, related_name="images")
+    image       = models.ImageField(upload_to="camera_images/%Y/%m/")
+    photo_type  = models.CharField(max_length=30, choices=PhotoType.choices, default=PhotoType.CLOSE_UP)
+    status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    proposed_by = models.CharField(max_length=255, blank=True)
+    proposed_at = models.DateTimeField(default=timezone.now)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_images"
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["photo_type", "-proposed_at"]
+        verbose_name = "Camera Image"
+        verbose_name_plural = "Camera Images"
+
+    def __str__(self):
+        return f"{self.get_photo_type_display()} — {self.camera} ({self.get_status_display()})"
+
+    def approve(self, user):
+        self.status = self.Status.APPROVED
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = user
+        self.save()
+
+    def reject(self, user):
+        self.status = self.Status.REJECTED
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = user
         self.save()
 
 

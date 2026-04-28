@@ -1,9 +1,9 @@
 from django.test import TestCase
 from rest_framework.test import APIClient
 
-from cameras.models import Camera
+from cameras.models import Camera, CameraImage
 
-from .utils import make_camera
+from .utils import make_camera, make_camera_image
 
 
 class CameraListAPITests(TestCase):
@@ -41,35 +41,17 @@ class CameraListAPITests(TestCase):
         self.assertIn("Shop Camera", cross_roads)
         self.assertNotIn("No Shop Camera", cross_roads)
 
-    def test_list_includes_image_fields(self):
-        make_camera()
+    def test_list_photos_only_shows_approved(self):
+        camera = make_camera()
+        make_camera_image(camera, status=CameraImage.Status.APPROVED)
+        make_camera_image(camera, status=CameraImage.Status.PENDING)
+        make_camera_image(camera, status=CameraImage.Status.REJECTED)
         response = self.client.get("/api/cameras/")
-        self.assertEqual(response.data["type"], "FeatureCollection")
         props = response.data["features"][0]["properties"]
-        self.assertIn("image", props)
-        self.assertIn("image_2", props)
-        self.assertIn("image_3", props)
+        self.assertIn("photos", props)
+        # Only the approved image should appear
+        self.assertEqual(len(props["photos"]), 1)
+        self.assertIn("url", props["photos"][0])
+        self.assertIn("type", props["photos"][0])
 
 
-class CameraDetailAPITests(TestCase):
-    def setUp(self):
-        self.client = APIClient()
-
-    def test_detail_returns_vetted_camera(self):
-        camera = make_camera()
-        response = self.client.get(f"/api/cameras/{camera.pk}/")
-        self.assertEqual(response.status_code, 200)
-        self.assertEqual(response.data["cross_road"], camera.cross_road)
-
-    def test_detail_404_for_pending(self):
-        camera = make_camera(status=Camera.Status.PENDING)
-        response = self.client.get(f"/api/cameras/{camera.pk}/")
-        self.assertEqual(response.status_code, 404)
-
-    def test_detail_includes_lat_lng(self):
-        camera = make_camera()
-        response = self.client.get(f"/api/cameras/{camera.pk}/")
-        self.assertIn("latitude", response.data)
-        self.assertIn("longitude", response.data)
-        self.assertAlmostEqual(response.data["latitude"], camera.latitude, places=4)
-        self.assertAlmostEqual(response.data["longitude"], camera.longitude, places=4)
