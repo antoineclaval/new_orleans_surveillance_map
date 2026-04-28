@@ -8,15 +8,32 @@
 
     <!-- Open Graph / Social media preview -->
     <meta property="og:type" content="website">
-    <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
-    <meta property="og:title" content="New Orleans map of surveillance">
-    <meta property="og:description" content="An interactive map of surveillance cameras in New Orleans.">
-    <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
-    <meta property="og:image:type" content="image/jpeg">
-    <meta property="og:image:width" content="1200">
-    <meta property="og:image:height" content="630">
+    {% if og %}
+      <meta property="og:url" content="{{ og.url }}">
+      <meta property="og:title" content="{{ og.title }}">
+      <meta property="og:description" content="{{ og.description }}">
+      {% if og.image_url %}
+        <meta property="og:image" content="{{ og.image_url }}">
+        <meta property="og:image:type" content="image/jpeg">
+        <meta name="twitter:image" content="{{ og.image_url }}">
+      {% else %}
+        <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
+        <meta property="og:image:type" content="image/jpeg">
+        <meta property="og:image:width" content="1200">
+        <meta property="og:image:height" content="630">
+        <meta name="twitter:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
+      {% endif %}
+    {% else %}
+      <meta property="og:url" content="{{ request.scheme }}://{{ request.get_host }}{{ request.path }}">
+      <meta property="og:title" content="New Orleans map of surveillance">
+      <meta property="og:description" content="An interactive map of surveillance cameras in New Orleans.">
+      <meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
+      <meta property="og:image:type" content="image/jpeg">
+      <meta property="og:image:width" content="1200">
+      <meta property="og:image:height" content="630">
+      <meta name="twitter:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
+    {% endif %}
     <meta name="twitter:card" content="summary_large_image">
-    <meta name="twitter:image" content="{{ request.scheme }}://{{ request.get_host }}/static/images/og-preview.jpg">
 
     <!-- Tailwind CSS via CDN -->
     <script src="https://cdn.tailwindcss.com"></script>

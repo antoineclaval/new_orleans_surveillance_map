@@ -5,7 +5,7 @@ from django.urls import reverse
 
 from cameras.models import Camera, CameraImage
 
-from .utils import make_camera, make_image_file
+from .utils import make_camera, make_camera_image, make_image_file
 
 
 class MapViewTests(TestCase):
@@ -25,6 +25,63 @@ class MapViewTests(TestCase):
         make_camera(status=Camera.Status.PENDING)
         response = self.client.get(reverse("map"))
         self.assertEqual(response.context["pending_count"], 1)
+
+
+class MapViewOGTests(TestCase):
+    def test_no_camera_param_og_is_none(self):
+        response = self.client.get(reverse("map"))
+        self.assertIsNone(response.context["og"])
+
+    def test_invalid_uuid_og_is_none(self):
+        response = self.client.get(reverse("map"), {"camera": "not-a-uuid"})
+        self.assertIsNone(response.context["og"])
+
+    def test_nonexistent_uuid_og_is_none(self):
+        response = self.client.get(reverse("map"), {"camera": "00000000-0000-0000-0000-000000000000"})
+        self.assertIsNone(response.context["og"])
+
+    def test_pending_camera_og_is_none(self):
+        camera = make_camera(status=Camera.Status.PENDING)
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        self.assertIsNone(response.context["og"])
+
+    def test_vetted_camera_og_title_and_description(self):
+        camera = make_camera(cross_road="Canal St & Royal St")
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        og = response.context["og"]
+        self.assertIsNotNone(og)
+        self.assertIn("Canal St & Royal St", og["title"])
+        self.assertIn("camera", og["description"])
+        self.assertIn(str(camera.pk), og["url"])
+        self.assertIsNone(og["image_url"])
+
+    def test_vetted_camera_og_url_contains_camera_param(self):
+        camera = make_camera()
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        og = response.context["og"]
+        self.assertIn(f"?camera={camera.pk}", og["url"])
+
+    def test_vetted_camera_with_approved_image_og_has_image_url(self):
+        camera = make_camera()
+        make_camera_image(camera)
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        og = response.context["og"]
+        self.assertIsNotNone(og["image_url"])
+        self.assertIn("camera_images/test.jpg", og["image_url"])
+
+    def test_pending_image_does_not_populate_og_image_url(self):
+        camera = make_camera()
+        make_camera_image(camera, status=CameraImage.Status.PENDING)
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        og = response.context["og"]
+        self.assertIsNotNone(og)
+        self.assertIsNone(og["image_url"])
+
+    def test_og_meta_tags_rendered_in_html(self):
+        camera = make_camera(cross_road="Bourbon St & St Charles Ave")
+        response = self.client.get(reverse("map"), {"camera": str(camera.pk)})
+        self.assertContains(response, f"?camera={camera.pk}")
+        self.assertContains(response, "Bourbon St")
 
 
 class ReportViewTests(TestCase):

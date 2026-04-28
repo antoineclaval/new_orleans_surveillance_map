@@ -2,6 +2,8 @@
 Views for camera mapping application.
 """
 
+import uuid
+
 from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import FormView, TemplateView
@@ -16,6 +18,28 @@ _NOLA_DEFAULT_LNG = -90.0715
 _NOLA_DEFAULT_ZOOM = 13
 
 
+def _build_og_context(camera, request):
+    location_label = camera.cross_road or camera.street_address or camera.associated_shop or "unknown location"
+    title = f"Surveillance camera — {location_label}"
+
+    parts = [f"{camera.get_camera_type_display()} camera"]
+    if camera.associated_shop:
+        parts.append(f"at {camera.associated_shop}")
+    if camera.street_address and camera.street_address != location_label:
+        parts.append(f"({camera.street_address})")
+    if camera.facial_recognition:
+        parts.append("· Facial recognition enabled")
+    description = " ".join(parts) + "."
+
+    image_url = None
+    first_image = camera.images.filter(status=CameraImage.Status.APPROVED).first()
+    if first_image:
+        image_url = request.build_absolute_uri(first_image.image.url)
+
+    canonical_url = f"{request.scheme}://{request.get_host()}/?camera={camera.pk}"
+    return {"title": title, "description": description, "image_url": image_url, "url": canonical_url}
+
+
 class MapView(TemplateView):
     """
     Main map view showing all vetted cameras.
@@ -28,6 +52,20 @@ class MapView(TemplateView):
         context["pending_count"] = Camera.objects.filter(status=Camera.Status.PENDING).count()
         context["site_info"] = AboutSection.objects.first()
         context["announcements"] = Announcement.objects.filter(is_active=True)
+
+        og = None
+        camera_uuid = self.request.GET.get("camera", "").strip()
+        if camera_uuid:
+            try:
+                camera_id = uuid.UUID(camera_uuid)
+            except ValueError:
+                camera_id = None
+            if camera_id:
+                camera = Camera.objects.filter(pk=camera_id, status=Camera.Status.VETTED).first()
+                if camera:
+                    og = _build_og_context(camera, self.request)
+
+        context["og"] = og
         return context
 
 
