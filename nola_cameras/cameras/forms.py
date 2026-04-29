@@ -7,6 +7,13 @@ from django.contrib.gis.geos import Point
 
 from .models import Camera, CameraImage
 
+_MAX_IMAGE_SIZE_MB = 20
+
+
+def validate_image_file_size(image):
+    if image.size > _MAX_IMAGE_SIZE_MB * 1024 * 1024:
+        raise forms.ValidationError(f"Image too large. Maximum size is {_MAX_IMAGE_SIZE_MB} MB.")
+
 
 class CameraReportForm(forms.ModelForm):
     """
@@ -39,14 +46,17 @@ class CameraReportForm(forms.ModelForm):
     # Image slots — not model fields, handled in view
     image_close_up = forms.ImageField(
         required=False,
+        validators=[validate_image_file_size],
         widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
     )
     image_surrounding = forms.ImageField(
         required=False,
+        validators=[validate_image_file_size],
         widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
     )
     image_project_nola_sign = forms.ImageField(
         required=False,
+        validators=[validate_image_file_size],
         widget=forms.FileInput(attrs={"class": "form-file", "accept": "image/*"}),
     )
 
@@ -130,6 +140,12 @@ class PhotoProposalForm(forms.ModelForm):
                 "placeholder": "Your email or name (optional)",
             }),
         }
+
+    def clean_image(self):
+        image = self.cleaned_data.get("image")
+        if image:
+            validate_image_file_size(image)
+        return image
 
     def clean(self):
         cleaned_data = super().clean()

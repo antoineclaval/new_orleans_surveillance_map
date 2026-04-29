@@ -1,11 +1,32 @@
 import tempfile
+from unittest.mock import Mock
 
+from django.core.exceptions import ValidationError
 from django.test import TestCase, override_settings
 
-from cameras.forms import CameraReportForm, PhotoProposalForm
+from cameras.forms import CameraReportForm, PhotoProposalForm, _MAX_IMAGE_SIZE_MB, validate_image_file_size
 from cameras.models import Camera, CameraImage
 
 from .utils import make_camera, make_image_file
+
+class ImageSizeValidatorTests(TestCase):
+    def _mock_image(self, size_mb):
+        img = Mock()
+        img.size = size_mb * 1024 * 1024
+        return img
+
+    def test_accepts_image_within_limit(self):
+        validate_image_file_size(self._mock_image(_MAX_IMAGE_SIZE_MB - 1))  # should not raise
+
+    def test_rejects_image_over_limit(self):
+        with self.assertRaises(ValidationError):
+            validate_image_file_size(self._mock_image(_MAX_IMAGE_SIZE_MB + 1))
+
+    def test_error_message_mentions_limit(self):
+        with self.assertRaises(ValidationError) as ctx:
+            validate_image_file_size(self._mock_image(_MAX_IMAGE_SIZE_MB + 1))
+        self.assertIn(str(_MAX_IMAGE_SIZE_MB), str(ctx.exception))
+
 
 VALID_DATA = {
     "cross_road": "Bourbon St & St Peter St",

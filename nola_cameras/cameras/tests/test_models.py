@@ -1,8 +1,10 @@
+import re
+
 from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 
-from cameras.models import Camera, CameraImage
+from cameras.models import Camera, CameraImage, _camera_image_upload_to
 
 from .utils import make_camera, make_camera_image
 
@@ -46,6 +48,47 @@ class CameraApproveRejectTests(TestCase):
         self.assertEqual(self.camera.status, Camera.Status.REJECTED)
         self.assertEqual(self.camera.vetted_by, self.user)
         self.assertIsNotNone(self.camera.vetted_at)
+
+
+class CameraImageUploadPathTests(TestCase):
+    def setUp(self):
+        self.camera = make_camera()
+
+    def test_path_starts_with_camera_images_dir(self):
+        instance = CameraImage(camera=self.camera)
+        path = _camera_image_upload_to(instance, "photo.jpg")
+        self.assertTrue(path.startswith("camera_images/"))
+
+    def test_filename_contains_camera_uuid(self):
+        instance = CameraImage(camera=self.camera)
+        path = _camera_image_upload_to(instance, "photo.jpg")
+        self.assertIn(str(self.camera.pk), path)
+
+    def test_filename_prefix(self):
+        instance = CameraImage(camera=self.camera)
+        filename = _camera_image_upload_to(instance, "photo.jpg").split("/")[-1]
+        self.assertTrue(filename.startswith("eos-camera-"))
+
+    def test_extension_lowercased(self):
+        instance = CameraImage(camera=self.camera)
+        path = _camera_image_upload_to(instance, "PHOTO.JPG")
+        self.assertTrue(path.endswith(".jpg"))
+
+    def test_date_in_filename(self):
+        instance = CameraImage(camera=self.camera)
+        filename = _camera_image_upload_to(instance, "photo.jpg").split("/")[-1]
+        self.assertRegex(filename, r"eos-camera-.*-\d{8}-\d+\.jpg")
+
+    def test_sequential_numbering(self):
+        instance = CameraImage(camera=self.camera)
+        path1 = _camera_image_upload_to(instance, "photo.jpg")
+        n1 = int(path1.rsplit("-", 1)[1].split(".")[0])
+
+        make_camera_image(self.camera)
+        path2 = _camera_image_upload_to(instance, "photo.jpg")
+        n2 = int(path2.rsplit("-", 1)[1].split(".")[0])
+
+        self.assertEqual(n2, n1 + 1)
 
 
 class CameraImageTests(TestCase):

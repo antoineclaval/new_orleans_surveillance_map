@@ -3,6 +3,7 @@ Camera model for New Orleans surveillance camera mapping.
 """
 
 import uuid
+from pathlib import Path
 
 from ckeditor.fields import RichTextField
 from django.contrib.auth.models import User
@@ -154,6 +155,13 @@ class Camera(models.Model):
         self.save()
 
 
+def _camera_image_upload_to(instance, filename):
+    ext = Path(filename).suffix.lower() or ".jpg"
+    n = CameraImage.objects.filter(camera_id=instance.camera_id).count() + 1
+    date = timezone.now().strftime("%Y%m%d")
+    return f"camera_images/eos-camera-{instance.camera_id}-{date}-{n}{ext}"
+
+
 class CameraImage(models.Model):
     class Status(models.TextChoices):
         PENDING  = "pending",  "Pending Review"
@@ -167,7 +175,7 @@ class CameraImage(models.Model):
 
     id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
     camera      = models.ForeignKey(Camera, on_delete=models.CASCADE, related_name="images")
-    image       = models.ImageField(upload_to="camera_images/%Y/%m/")
+    image       = models.ImageField(upload_to=_camera_image_upload_to)
     photo_type  = models.CharField(max_length=30, choices=PhotoType.choices, default=PhotoType.CLOSE_UP)
     status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
     proposed_by = models.CharField(max_length=255, blank=True)
