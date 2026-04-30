@@ -1,0 +1,8 @@
+FROM alpine:3.19
+RUN apk add --no-cache ca-certificates
+ARG GOATCOUNTER_VERSION=2.7.0
+ADD https://github.com/arp242/goatcounter/releases/download/v${GOATCOUNTER_VERSION}/goatcounter-v${GOATCOUNTER_VERSION}-linux-amd64.gz /tmp/gc.gz
+RUN gunzip /tmp/gc.gz \
+    && mv /tmp/gc /usr/local/bin/goatcounter \
+    && chmod +x /usr/local/bin/goatcounter
+ENTRYPOINT ["/usr/local/bin/goatcounter"]

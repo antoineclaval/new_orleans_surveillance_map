@@ -25,9 +25,23 @@
         }
     }
 
-    # Logging
+    # Logging — JSON format to file so GoatCounter can import from it
     log {
-        output stdout
-        format console
+        output file /var/log/caddy/access.log {
+            roll_size 100mb
+            roll_keep 5
+        }
+        format json
+    }
+}
+
+# GoatCounter analytics dashboard : basic auth gate before the GoatCounter login
+stats.{$DOMAIN:localhost} {
+    basicauth {
+        {$STATS_USER} {$STATS_PASSWORD_HASH}
+    }
+    reverse_proxy goatcounter:8080 {
+        header_up X-Forwarded-For {remote_host}
+        header_up X-Real-IP {remote_host}
     }
 }

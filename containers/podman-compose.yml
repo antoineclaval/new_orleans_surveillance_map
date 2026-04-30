@@ -84,6 +84,8 @@ services:
     container_name: nola-caddy
     environment:
       DOMAIN: ${DOMAIN:-localhost}
+      STATS_USER: ${STATS_USER:-admin}
+      STATS_PASSWORD_HASH: ${STATS_PASSWORD_HASH:-}
     ports:
       - "0.0.0.0:80:80"
       - "0.0.0.0:443:443"
@@ -95,8 +97,49 @@ services:
       - caddy_config:/config
       - media_data:/srv/media:ro
       - static_data:/srv/static:ro
+      - caddy_logs:/var/log/caddy
     depends_on:
       - web
+
+  # GoatCounter analytics server (opt-in via ANALYTICS_ENABLED=true in .env)
+  goatcounter:
+    build:
+      context: ..
+      dockerfile: containers/Containerfile.goatcounter
+    container_name: nola-goatcounter
+    profiles:
+      - analytics
+    command: >
+      serve
+      -listen :8080
+      -tls none
+      -db postgresql://goatcounter:${GOATCOUNTER_DB_PASSWORD}@db/goatcounter?sslmode=disable
+    expose:
+      - "8080"
+    depends_on:
+      db:
+        condition: service_healthy
+
+  # GoatCounter log importer — tails Caddy access log and writes directly to DB
+  goatcounter-import:
+    build:
+      context: ..
+      dockerfile: containers/Containerfile.goatcounter
+    container_name: nola-goatcounter-import
+    profiles:
+      - analytics
+    volumes:
+      - caddy_logs:/var/log/caddy:ro
+    command: >
+      import
+      -follow
+      -format caddy
+      -db postgresql://goatcounter:${GOATCOUNTER_DB_PASSWORD}@db/goatcounter?sslmode=disable
+      -site https://stats.${DOMAIN:-localhost}
+      -exclude /static,/media,/admin,/favicon.ico,/robots.txt
+      /var/log/caddy/access.log
+    depends_on:
+      - goatcounter
 
 volumes:
   postgres_data:
@@ -104,3 +147,4 @@ volumes:
   static_data:
   caddy_data:
   caddy_config:
+  caddy_logs:

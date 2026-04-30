@@ -453,6 +453,10 @@ start_prod() {
 
     print_status "Building and starting production containers..."
     podman-compose -f containers/podman-compose.yml up -d --build db web caddy
+    if [ "${ANALYTICS_ENABLED:-false}" = "true" ]; then
+        print_status "Starting GoatCounter analytics containers..."
+        podman-compose -f containers/podman-compose.yml --profile analytics up -d --build goatcounter goatcounter-import
+    fi
 
     # Wait for DB to be healthy before migrating
     print_status "Waiting for database to be ready..."
@@ -502,6 +506,10 @@ update_prod() {
     print_status "Rebuilding and restarting containers (DB volume preserved)..."
     podman-compose -f containers/podman-compose.yml down 2>/dev/null || true
     podman-compose -f containers/podman-compose.yml up -d --build db web caddy
+    if [ "${ANALYTICS_ENABLED:-false}" = "true" ]; then
+        print_status "Restarting GoatCounter analytics containers..."
+        podman-compose -f containers/podman-compose.yml --profile analytics up -d --build goatcounter goatcounter-import
+    fi
 
     # Wait for DB
     print_status "Waiting for database to be ready..."
@@ -852,6 +860,15 @@ prep_step_env() {
     echo "  DJANGO_DEBUG=False"
     echo "  (DJANGO_SECRET_KEY and POSTGRES_PASSWORD are already generated)"
     echo ""
+    print_info "Optional: enable GoatCounter analytics by also setting:"
+    echo "  ANALYTICS_ENABLED=true"
+    echo "  GOATCOUNTER_DB_PASSWORD=\$(openssl rand -base64 24)"
+    echo "  GOATCOUNTER_ADMIN_EMAIL=you@example.com"
+    echo "  GOATCOUNTER_ADMIN_PASSWORD=<strong password>"
+    echo "  STATS_USER=admin"
+    echo "  STATS_PASSWORD_HASH=\$(podman run --rm docker.io/caddy:2 caddy hash-password --plaintext 'yourpassword')"
+    echo "  (Also add a DNS A record: stats.yourdomain.com → same VPS IP)"
+    echo ""
     read -rp "Press Enter when .env is ready to continue... "
 }
 
@@ -936,6 +953,94 @@ prep_step_deploy() {
     start_prod
 }
 
+# =============================================================================
+# GoatCounter Analytics
+# =============================================================================
+
+install_analytics() {
+    print_header "GoatCounter Analytics Setup"
+
+    load_env
+
+    if [ "${ANALYTICS_ENABLED:-false}" != "true" ]; then
+        print_warning "ANALYTICS_ENABLED is not 'true' in .env — nothing to do"
+        print_info "Set ANALYTICS_ENABLED=true and the GOATCOUNTER_* and STATS_* vars, then re-run."
+        return 0
+    fi
+
+    # Validate required analytics variables
+    local ok=1
+    for var in GOATCOUNTER_DB_PASSWORD GOATCOUNTER_ADMIN_EMAIL GOATCOUNTER_ADMIN_PASSWORD STATS_USER STATS_PASSWORD_HASH; do
+        if [ -z "${!var}" ]; then
+            print_error "$var is not set in .env"
+            ok=0
+        fi
+    done
+    if [ "$ok" -eq 0 ]; then
+        print_error "Set the missing variables in .env, then re-run: ./scripts/setup.sh install-analytics"
+        exit 1
+    fi
+
+    # Step 1: Create the goatcounter DB user and database inside nola-db
+    print_status "Creating GoatCounter PostgreSQL user and database..."
+    podman exec nola-db psql -U "${POSTGRES_USER:-nola}" -d "${POSTGRES_DB:-nola_cameras}" -c "
+        DO \$\$ BEGIN
+            IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = 'goatcounter') THEN
+                CREATE USER goatcounter WITH PASSWORD '${GOATCOUNTER_DB_PASSWORD}';
+            END IF;
+        END \$\$;
+    " 2>/dev/null || true
+    podman exec nola-db psql -U "${POSTGRES_USER:-nola}" \
+        -c "CREATE DATABASE goatcounter OWNER goatcounter;" 2>/dev/null || true
+    podman exec nola-db psql -U "${POSTGRES_USER:-nola}" -d goatcounter \
+        -c "GRANT ALL ON SCHEMA public TO goatcounter;" 2>/dev/null || true
+    print_status "GoatCounter database ready"
+
+    # Step 2: Build and start the GoatCounter serve container
+    print_status "Building and starting GoatCounter server..."
+    podman-compose -f containers/podman-compose.yml --profile analytics up -d --build goatcounter
+
+    # Wait for the container to be running
+    local waited=0
+    until podman inspect --format '{{.State.Running}}' nola-goatcounter 2>/dev/null | grep -q true; do
+        sleep 2
+        waited=$((waited + 2))
+        if [ "$waited" -ge 30 ]; then
+            print_error "GoatCounter container did not start. Check: podman logs nola-goatcounter"
+            exit 1
+        fi
+    done
+    sleep 3  # Allow the server to bind the port
+
+    # Step 3: Create the GoatCounter site
+    print_status "Creating GoatCounter site (vhost: stats.${DOMAIN})..."
+    podman exec nola-goatcounter goatcounter db create site \
+        -db "postgresql://goatcounter:${GOATCOUNTER_DB_PASSWORD}@db/goatcounter?sslmode=disable" \
+        -vhost "stats.${DOMAIN}" \
+        -user.email "${GOATCOUNTER_ADMIN_EMAIL}" \
+        -user.password "${GOATCOUNTER_ADMIN_PASSWORD}" 2>/dev/null \
+        || print_warning "Site may already exist — continuing"
+
+    # Step 4: Start the log importer
+    print_status "Starting GoatCounter log importer..."
+    podman-compose -f containers/podman-compose.yml --profile analytics up -d goatcounter-import
+
+    print_status "GoatCounter analytics installed!"
+    echo ""
+    print_info "Dashboard: https://stats.${DOMAIN}  (HTTP basic auth → GoatCounter login)"
+    print_info "Importer logs: podman logs nola-goatcounter-import"
+    print_info "Note: data appears only after Caddy has logged at least one request"
+}
+
+prep_step_analytics() {
+    load_env
+    if [ "${ANALYTICS_ENABLED:-false}" != "true" ]; then
+        print_info "ANALYTICS_ENABLED not set to 'true' — skipping GoatCounter setup"
+        return 0
+    fi
+    install_analytics
+}
+
 prep_step_systemd() {
     if [ "$(id -u)" -ne 0 ]; then
         print_error "This step requires root. Re-run as root or with sudo."
@@ -948,6 +1053,15 @@ prep_step_systemd() {
         exit 1
     }
 
+    load_env
+
+    local analytics_start=""
+    local analytics_stop_profile=""
+    if [ "${ANALYTICS_ENABLED:-false}" = "true" ]; then
+        analytics_start="ExecStart=$compose_bin -f containers/podman-compose.yml --profile analytics up -d goatcounter goatcounter-import"
+        analytics_stop_profile="--profile analytics"
+    fi
+
     cat > /etc/systemd/system/nola-cameras.service << EOF
 [Unit]
 Description=NOLA Camera Mapping
@@ -959,7 +1073,8 @@ Type=oneshot
 RemainAfterExit=yes
 WorkingDirectory=$PROJECT_ROOT
 ExecStart=$compose_bin -f containers/podman-compose.yml up -d db web caddy
-ExecStop=$compose_bin -f containers/podman-compose.yml down
+${analytics_start}
+ExecStop=$compose_bin -f containers/podman-compose.yml $analytics_stop_profile down
 EnvironmentFile=$PROJECT_ROOT/.env
 
 [Install]
@@ -1025,6 +1140,7 @@ prepare_prod() {
         "deploy|Deploy containers|prep_step_deploy"
         "systemd|Install systemd auto-start service|prep_step_systemd"
         "verify|Verify deployment|prep_step_verify"
+        "analytics|Install GoatCounter analytics (skipped if ANALYTICS_ENABLED != true)|prep_step_analytics"
     )
     local total=${#steps[@]}
     local num=0
@@ -1074,11 +1190,12 @@ show_help() {
     echo "  superuser             Create Django admin superuser"
     echo ""
     echo -e "${BLUE}Server Setup Commands:${NC}"
-    echo "  prepare-prod    Full VPS setup + hardening (resumable, checkpointed)"
-    echo "                  Includes: SSH hardening, fail2ban, sysctl, auto-updates"
-    echo "                  Re-run after fixing any failure to resume from that step"
-    echo "                  Reset progress: rm .prepare_prod_state"
-    echo "  update          Pull latest code and restart containers (DB data preserved)"
+    echo "  prepare-prod       Full VPS setup + hardening (resumable, checkpointed)"
+    echo "                     Includes: SSH hardening, fail2ban, sysctl, auto-updates"
+    echo "                     Re-run after fixing any failure to resume from that step"
+    echo "                     Reset progress: rm .prepare_prod_state"
+    echo "  update             Pull latest code and restart containers (DB data preserved)"
+    echo "  install-analytics  Set up GoatCounter analytics (requires ANALYTICS_ENABLED=true in .env)"
     echo ""
     echo -e "${BLUE}Cleanup Commands:${NC}"
     echo "  stop        Stop all running containers"
@@ -1141,6 +1258,9 @@ case "${1:-help}" in
         ;;
     update)
         update_prod
+        ;;
+    install-analytics)
+        install_analytics
         ;;
     help|*)
         show_help

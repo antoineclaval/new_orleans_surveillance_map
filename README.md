@@ -274,6 +274,50 @@ The deploy command rebuilds the web image and restarts containers with zero down
 
 ---
 
+## Analytics (Optional)
+
+This project supports privacy-first analytics via [GoatCounter](https://www.goatcounter.com/) — a
+lightweight, open-source tool with no JavaScript required on the site. Analytics are captured at the
+Caddy reverse-proxy layer by parsing its JSON access logs, so they work for any future services added
+behind the same Caddy instance
+
+### How it works
+
+```
+Visitor > Caddy > access.log > goatcounter-import > PostgreSQL > GoatCounter UI
+```
+
+
+### Enabling analytics on your deployment
+
+1. Generate the required credentials:
+   ```bash
+   # Bcrypt hash for the HTTP basic auth gate on stats.yourdomain.com
+   podman run --rm docker.io/caddy:2 caddy hash-password --plaintext 'yourpassword'
+   ```
+
+2. Add to your `.env`:
+   ```
+   ANALYTICS_ENABLED=true
+   GOATCOUNTER_DB_PASSWORD=<openssl rand -base64 24>
+   GOATCOUNTER_ADMIN_EMAIL=you@example.com
+   GOATCOUNTER_ADMIN_PASSWORD=<strong password>
+   STATS_USER=admin
+   STATS_PASSWORD_HASH=<output from caddy hash-password above>
+   ```
+
+3. Add a DNS A record pointing `stats.yourdomain.com` to your server IP.
+
+4. Run the installer:
+   ```bash
+   sudo ./scripts/setup.sh install-analytics
+   ```
+
+5. Visit `https://stats.yourdomain.com` — enter your HTTP basic auth credentials, then log in
+   with the GoatCounter email/password you configured. Data appears after the first Caddy request.
+
+---
+
 ## Environment Variables
 
 | Variable | Description | Default |
@@ -288,6 +332,12 @@ The deploy command rebuilds the web image and restarts containers with zero down
 | `POSTGRES_PORT` | Database port | `5432` |
 | `CSRF_TRUSTED_ORIGINS` | CSRF trusted origins | `http://localhost:8000` |
 | `DOMAIN` | Production domain (for Caddy) | `localhost` |
+| `ANALYTICS_ENABLED` | Enable GoatCounter analytics | `false` |
+| `GOATCOUNTER_DB_PASSWORD` | Password for the GoatCounter PostgreSQL user | — |
+| `GOATCOUNTER_ADMIN_EMAIL` | GoatCounter dashboard login email | — |
+| `GOATCOUNTER_ADMIN_PASSWORD` | GoatCounter dashboard login password | — |
+| `STATS_USER` | HTTP basic auth username for `stats.domain.com` | `admin` |
+| `STATS_PASSWORD_HASH` | Caddy bcrypt hash for `STATS_USER` | — |
 
 ---
 
