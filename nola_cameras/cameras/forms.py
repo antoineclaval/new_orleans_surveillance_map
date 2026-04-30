@@ -65,7 +65,6 @@ class CameraReportForm(forms.ModelForm):
         fields = [
             "cross_road",
             "street_address",
-            "facial_recognition",
             "associated_shop",
             "reported_by",
         ]
@@ -85,9 +84,6 @@ class CameraReportForm(forms.ModelForm):
             "reported_by": forms.TextInput(attrs={
                 "class": "form-input",
                 "placeholder": "Your email or name (optional)",
-            }),
-            "facial_recognition": forms.CheckboxInput(attrs={
-                "class": "form-checkbox",
             }),
         }
 
