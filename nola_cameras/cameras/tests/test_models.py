@@ -4,9 +4,9 @@ from django.contrib.auth.models import User
 from django.contrib.gis.geos import Point
 from django.test import TestCase
 
-from cameras.models import Camera, CameraImage, _camera_image_upload_to
+from cameras.models import Camera, CameraImage, CorrectionProposal, _camera_image_upload_to
 
-from .utils import make_camera, make_camera_image
+from .utils import make_camera, make_camera_image, make_correction_proposal
 
 
 class CameraDefaultStatusTest(TestCase):
@@ -118,3 +118,31 @@ class CameraImageTests(TestCase):
         self.assertEqual(img.status, CameraImage.Status.REJECTED)
         self.assertEqual(img.reviewed_by, self.user)
         self.assertIsNotNone(img.reviewed_at)
+
+
+class CorrectionProposalTests(TestCase):
+    def setUp(self):
+        self.camera = make_camera()
+        self.user = User.objects.create_user(username="reviewer2", password="pass")
+
+    def test_default_status_is_pending(self):
+        proposal = CorrectionProposal.objects.create(
+            camera=self.camera, message="Wrong address"
+        )
+        self.assertEqual(proposal.status, CorrectionProposal.Status.PENDING)
+
+    def test_accept_sets_status_and_reviewer(self):
+        proposal = make_correction_proposal(self.camera)
+        proposal.accept(self.user)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, CorrectionProposal.Status.ACCEPTED)
+        self.assertEqual(proposal.reviewed_by, self.user)
+        self.assertIsNotNone(proposal.reviewed_at)
+
+    def test_reject_sets_status_and_reviewer(self):
+        proposal = make_correction_proposal(self.camera)
+        proposal.reject(self.user)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, CorrectionProposal.Status.REJECTED)
+        self.assertEqual(proposal.reviewed_by, self.user)
+        self.assertIsNotNone(proposal.reviewed_at)

@@ -1,0 +1,78 @@
+{% extends "base.html" %}
+
+{% block title %}Suggest a Correction - New Orleans surveillance map{% endblock %}
+
+{% block content %}
+<div class="max-w-2xl mx-auto px-4 py-8">
+    <div class="mb-6">
+        <a href="{% url 'map' %}?camera={{ camera.id }}"
+           class="text-sm text-nola-purple hover:text-purple-700 font-medium inline-flex items-center gap-1 mb-4">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+            </svg>
+            Back to map
+        </a>
+        <h1 class="text-2xl font-bold text-gray-900 mb-1">Suggest a Correction</h1>
+        <p class="text-gray-600">
+            Camera: <span class="font-medium text-gray-800">{{ camera.cross_road|default:camera.street_address|default:camera.associated_shop }}</span>
+        </p>
+    </div>
+
+    <div class="bg-white rounded-xl shadow-sm border border-gray-100 p-6">
+        <p class="text-sm text-gray-500 mb-6">
+            Describe what information looks incorrect or outdated. Our team will review your message and update the record manually.
+        </p>
+
+        {% if form.non_field_errors %}
+        <div class="mb-4 p-3 bg-red-50 border border-red-200 rounded-lg">
+            {% for error in form.non_field_errors %}
+            <p class="text-sm text-red-600">{{ error }}</p>
+            {% endfor %}
+        </div>
+        {% endif %}
+
+        <form method="post">
+            {% csrf_token %}
+
+            <!-- Honeypot -->
+            <div style="position: absolute; left: -9999px;" aria-hidden="true">
+                {{ form.website }}
+            </div>
+
+            <!-- Message -->
+            <div class="mb-5">
+                <label for="id_message" class="block text-sm font-medium text-gray-700 mb-2">
+                    What needs to be corrected? <span class="text-red-500">*</span>
+                </label>
+                <textarea name="message"
+                          id="id_message"
+                          rows="5"
+                          required
+                          placeholder="Describe what needs to be corrected or updated (e.g., wrong address, camera removed, type changed...)"
+                          class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nola-purple focus:border-transparent">{{ form.message.value|default:'' }}</textarea>
+                {% if form.message.errors %}
+                <p class="text-sm text-red-600 mt-1">{{ form.message.errors.0 }}</p>
+                {% endif %}
+            </div>
+
+            <!-- Proposed by -->
+            <div class="mb-6">
+                <label for="id_proposed_by" class="block text-sm font-medium text-gray-700 mb-2">
+                    Your name or email <span class="text-gray-400">(optional)</span>
+                </label>
+                <input type="text"
+                       name="proposed_by"
+                       id="id_proposed_by"
+                       value="{{ form.proposed_by.value|default:'' }}"
+                       placeholder="Your email or name (optional)"
+                       class="block w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-nola-purple focus:border-transparent">
+            </div>
+
+            <button type="submit"
+                    class="w-full bg-nola-purple text-white py-3 px-6 rounded-lg font-medium hover:bg-purple-700 transition">
+                Submit Correction
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

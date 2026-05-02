@@ -207,6 +207,46 @@ class CameraImage(models.Model):
         self.save()
 
 
+class CorrectionProposal(models.Model):
+    class Status(models.TextChoices):
+        PENDING  = "pending",  "Pending Review"
+        ACCEPTED = "accepted", "Accepted"
+        REJECTED = "rejected", "Rejected"
+
+    id          = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    camera      = models.ForeignKey(Camera, on_delete=models.CASCADE, related_name="correction_proposals")
+    message     = models.TextField()
+    status      = models.CharField(max_length=20, choices=Status.choices, default=Status.PENDING, db_index=True)
+    proposed_by = models.CharField(max_length=255, blank=True)
+    proposed_at = models.DateTimeField(default=timezone.now)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+    reviewed_by = models.ForeignKey(
+        User, on_delete=models.SET_NULL, null=True, blank=True, related_name="reviewed_corrections"
+    )
+    notes = models.TextField(blank=True)
+
+    class Meta:
+        ordering = ["-proposed_at"]
+        verbose_name = "Correction Proposal"
+        verbose_name_plural = "Correction Proposals"
+
+    def __str__(self):
+        label = self.camera.cross_road or self.camera.street_address or self.camera.associated_shop
+        return f"Correction for {label} ({self.get_status_display()})"
+
+    def accept(self, user):
+        self.status = self.Status.ACCEPTED
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = user
+        self.save()
+
+    def reject(self, user):
+        self.status = self.Status.REJECTED
+        self.reviewed_at = timezone.now()
+        self.reviewed_by = user
+        self.save()
+
+
 class AboutSection(models.Model):
     """Singleton: project About/description text."""
 

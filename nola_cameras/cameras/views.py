@@ -8,8 +8,8 @@ from django.shortcuts import get_object_or_404
 from django.urls import reverse_lazy
 from django.views.generic import FormView, TemplateView
 
-from .forms import CameraReportForm, PhotoProposalForm
-from .models import AboutSection, Announcement, Camera, CameraImage
+from .forms import CameraReportForm, CorrectionProposalForm, PhotoProposalForm
+from .models import AboutSection, Announcement, Camera, CameraImage, CorrectionProposal
 
 _MOBILE_UA_KEYWORDS = ("mobile", "android", "iphone", "ipad", "ipod")
 
@@ -157,6 +157,46 @@ class ProposePhotoSuccessView(TemplateView):
     """
 
     template_name = "propose_photo_success.html"
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["camera"] = get_object_or_404(
+            Camera, pk=kwargs["camera_id"], status=Camera.Status.VETTED
+        )
+        return context
+
+
+class ProposeCorrectionView(FormView):
+    """
+    Public form to propose a correction for an existing vetted camera.
+    """
+
+    template_name = "propose_correction.html"
+    form_class = CorrectionProposalForm
+
+    def setup(self, request, *args, **kwargs):
+        super().setup(request, *args, **kwargs)
+        self.camera = get_object_or_404(Camera, pk=kwargs["camera_id"], status=Camera.Status.VETTED)
+
+    def get_success_url(self):
+        return reverse_lazy("propose-correction-success", kwargs={"camera_id": self.camera.pk})
+
+    def get_context_data(self, **kwargs):
+        context = super().get_context_data(**kwargs)
+        context["camera"] = self.camera
+        return context
+
+    def form_valid(self, form):
+        form.save(camera=self.camera)
+        return super().form_valid(form)
+
+
+class ProposeCorrectionSuccessView(TemplateView):
+    """
+    Success page after correction proposal submission.
+    """
+
+    template_name = "propose_correction_success.html"
 
     def get_context_data(self, **kwargs):
         context = super().get_context_data(**kwargs)

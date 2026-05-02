@@ -108,3 +108,33 @@ class PhotoProposalFormTests(TestCase):
         self.assertEqual(img.camera, self.camera)
         self.assertEqual(img.photo_type, CameraImage.PhotoType.SURROUNDING)
         self.assertEqual(img.proposed_by, "tester@example.com")
+
+
+class CorrectionProposalFormTests(TestCase):
+    def setUp(self):
+        self.camera = make_camera()
+
+    def test_valid_form_is_valid(self):
+        from cameras.forms import CorrectionProposalForm
+        form = CorrectionProposalForm(data={"message": "The street address listed is incorrect.", "proposed_by": "", "website": ""})
+        self.assertTrue(form.is_valid(), form.errors)
+
+    def test_honeypot_filled_is_invalid(self):
+        from cameras.forms import CorrectionProposalForm
+        form = CorrectionProposalForm(data={"message": "Wrong type.", "proposed_by": "", "website": "spam"})
+        self.assertFalse(form.is_valid())
+
+    def test_missing_message_is_invalid(self):
+        from cameras.forms import CorrectionProposalForm
+        form = CorrectionProposalForm(data={"message": "", "proposed_by": "", "website": ""})
+        self.assertFalse(form.is_valid())
+
+    def test_save_creates_pending_proposal_for_camera(self):
+        from cameras.forms import CorrectionProposalForm
+        from cameras.models import CorrectionProposal
+        form = CorrectionProposalForm(data={"message": "Address is wrong.", "proposed_by": "tester@example.com", "website": ""})
+        self.assertTrue(form.is_valid(), form.errors)
+        proposal = form.save(camera=self.camera)
+        self.assertEqual(proposal.status, CorrectionProposal.Status.PENDING)
+        self.assertEqual(proposal.camera, self.camera)
+        self.assertEqual(proposal.proposed_by, "tester@example.com")

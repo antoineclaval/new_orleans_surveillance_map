@@ -211,3 +211,66 @@ class ProposePhotoSuccessViewTests(TestCase):
         url = reverse("propose-photo-success", kwargs={"camera_id": self.pending.pk})
         response = self.client.get(url)
         self.assertEqual(response.status_code, 404)
+
+
+class ProposeCorrectionViewTests(TestCase):
+    def setUp(self):
+        self.vetted = make_camera(cross_road="Vetted Camera")
+        self.pending = make_camera(status=Camera.Status.PENDING, cross_road="Pending Camera")
+
+    def test_get_renders_with_camera_context(self):
+        url = reverse("propose-correction", kwargs={"camera_id": self.vetted.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "propose_correction.html")
+        self.assertEqual(response.context["camera"], self.vetted)
+
+    def test_get_404_for_pending_camera(self):
+        url = reverse("propose-correction", kwargs={"camera_id": self.pending.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)
+
+    def test_post_valid_redirects_to_success(self):
+        from cameras.models import CorrectionProposal
+        url = reverse("propose-correction", kwargs={"camera_id": self.vetted.pk})
+        response = self.client.post(url, {"message": "The street address listed is incorrect.", "proposed_by": "", "website": ""})
+        self.assertRedirects(response, reverse("propose-correction-success", kwargs={"camera_id": self.vetted.pk}))
+        self.assertEqual(CorrectionProposal.objects.filter(camera=self.vetted).count(), 1)
+
+    def test_post_creates_pending_proposal(self):
+        from cameras.models import CorrectionProposal
+        url = reverse("propose-correction", kwargs={"camera_id": self.vetted.pk})
+        self.client.post(url, {"message": "Camera has been removed.", "proposed_by": "", "website": ""})
+        proposal = CorrectionProposal.objects.get(camera=self.vetted)
+        self.assertEqual(proposal.status, CorrectionProposal.Status.PENDING)
+
+    def test_post_missing_message_stays_on_form(self):
+        url = reverse("propose-correction", kwargs={"camera_id": self.vetted.pk})
+        response = self.client.post(url, {"message": "", "proposed_by": "", "website": ""})
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response.context["form"].errors)
+
+    def test_honeypot_filled_stays_on_form(self):
+        from cameras.models import CorrectionProposal
+        url = reverse("propose-correction", kwargs={"camera_id": self.vetted.pk})
+        response = self.client.post(url, {"message": "Something is wrong.", "proposed_by": "", "website": "spam"})
+        self.assertEqual(response.status_code, 200)
+        self.assertFalse(CorrectionProposal.objects.exists())
+
+
+class ProposeCorrectionSuccessViewTests(TestCase):
+    def setUp(self):
+        self.vetted = make_camera()
+        self.pending = make_camera(status=Camera.Status.PENDING, cross_road="Pending")
+
+    def test_renders_with_camera_context(self):
+        url = reverse("propose-correction-success", kwargs={"camera_id": self.vetted.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 200)
+        self.assertTemplateUsed(response, "propose_correction_success.html")
+        self.assertEqual(response.context["camera"], self.vetted)
+
+    def test_404_for_pending_camera(self):
+        url = reverse("propose-correction-success", kwargs={"camera_id": self.pending.pk})
+        response = self.client.get(url)
+        self.assertEqual(response.status_code, 404)

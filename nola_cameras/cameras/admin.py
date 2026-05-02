@@ -11,7 +11,7 @@ from django.utils.html import format_html
 from import_export import fields, resources
 from import_export.admin import ImportExportMixin
 
-from .models import AboutSection, Announcement, Camera, CameraImage
+from .models import AboutSection, Announcement, Camera, CameraImage, CorrectionProposal
 
 
 class CameraResource(resources.ModelResource):
@@ -98,6 +98,18 @@ def reject_images(modeladmin, request, queryset):
         img.reject(request.user)
 
 
+@admin.action(description="Accept selected correction proposals")
+def accept_corrections(modeladmin, request, queryset):
+    for proposal in queryset:
+        proposal.accept(request.user)
+
+
+@admin.action(description="Reject selected correction proposals")
+def reject_corrections(modeladmin, request, queryset):
+    for proposal in queryset:
+        proposal.reject(request.user)
+
+
 class CameraImageInline(admin.TabularInline):
     model = CameraImage
     extra = 1
@@ -115,12 +127,21 @@ class CameraImageInline(admin.TabularInline):
     image_preview_inline.short_description = "Preview"
 
 
+class CorrectionProposalInline(admin.TabularInline):
+    model = CorrectionProposal
+    extra = 0
+    readonly_fields = ["message", "status", "proposed_by", "proposed_at", "reviewed_at", "reviewed_by"]
+    fields = ["message", "status", "proposed_by", "proposed_at", "reviewed_at", "reviewed_by"]
+    show_change_link = True
+    can_delete = False
+
+
 @admin.register(Camera)
 class CameraAdmin(ImportExportMixin, GISModelAdmin):
     """Admin interface for Camera model with map widget and export."""
 
     resource_class = CameraResource
-    inlines = [CameraImageInline]
+    inlines = [CameraImageInline, CorrectionProposalInline]
 
     list_display = [
         "short_id",
@@ -368,6 +389,70 @@ class CameraImageAdmin(admin.ModelAdmin):
             obj.reviewed_by = request.user
             obj.reviewed_at = timezone.now()
         super().save_model(request, obj, form, change)
+
+
+@admin.register(CorrectionProposal)
+class CorrectionProposalAdmin(admin.ModelAdmin):
+    list_display = [
+        "short_id",
+        "camera_link",
+        "status_badge",
+        "proposed_by",
+        "proposed_at",
+        "message_excerpt",
+    ]
+    list_filter = ["status", "proposed_at"]
+    search_fields = ["camera__cross_road", "camera__street_address", "proposed_by", "message"]
+    readonly_fields = ["id", "proposed_at", "reviewed_at", "reviewed_by"]
+    actions = [accept_corrections, reject_corrections]
+    date_hierarchy = "proposed_at"
+
+    fieldsets = (
+        ("Proposal", {"fields": ("camera", "message")}),
+        ("Status", {"fields": ("status", "notes")}),
+        ("Proposer Information", {"fields": ("proposed_by", "proposed_at"), "classes": ("collapse",)}),
+        ("Review Information", {"fields": ("reviewed_at", "reviewed_by"), "classes": ("collapse",)}),
+        ("Metadata", {"fields": ("id",), "classes": ("collapse",)}),
+    )
+
+    def short_id(self, obj):
+        return str(obj.id)[:8]
+    short_id.short_description = "ID"
+
+    def camera_link(self, obj):
+        url = reverse("admin:cameras_camera_change", args=[obj.camera_id])
+        return format_html('<a href="{}">{}</a>', url, obj.camera)
+    camera_link.short_description = "Camera"
+
+    def status_badge(self, obj):
+        colors = {
+            CorrectionProposal.Status.ACCEPTED: "#22c55e",
+            CorrectionProposal.Status.PENDING:  "#eab308",
+            CorrectionProposal.Status.REJECTED: "#ef4444",
+        }
+        color = colors.get(obj.status, "#6b7280")
+        return format_html(
+            '<span style="background-color: {}; color: white; padding: 3px 8px; '
+            'border-radius: 4px; font-size: 11px;">{}</span>',
+            color,
+            obj.get_status_display(),
+        )
+    status_badge.short_description = "Status"
+    status_badge.admin_order_field = "status"
+
+    def message_excerpt(self, obj):
+        return obj.message[:80] + "…" if len(obj.message) > 80 else obj.message
+    message_excerpt.short_description = "Message"
+
+    def save_model(self, request, obj, form, change):
+        if obj.status in (CorrectionProposal.Status.ACCEPTED, CorrectionProposal.Status.REJECTED):
+            if not obj.reviewed_by:
+                obj.reviewed_by = request.user
+                obj.reviewed_at = timezone.now()
+        super().save_model(request, obj, form, change)
+
+    def get_queryset(self, request):
+        return super().get_queryset(request).select_related("camera", "reviewed_by")
 
 
 @admin.register(AboutSection)

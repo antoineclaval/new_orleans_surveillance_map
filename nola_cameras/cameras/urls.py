@@ -12,4 +12,6 @@ urlpatterns = [
     path("report/success/", views.ReportSuccessView.as_view(), name="report-success"),
     path("cameras/<uuid:camera_id>/propose-photo/", views.ProposePhotoView.as_view(), name="propose-photo"),
     path("cameras/<uuid:camera_id>/propose-photo/success/", views.ProposePhotoSuccessView.as_view(), name="propose-photo-success"),
+    path("cameras/<uuid:camera_id>/propose-correction/", views.ProposeCorrectionView.as_view(), name="propose-correction"),
+    path("cameras/<uuid:camera_id>/propose-correction/success/", views.ProposeCorrectionSuccessView.as_view(), name="propose-correction-success"),
 ]

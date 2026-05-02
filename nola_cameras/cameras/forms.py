@@ -5,7 +5,7 @@ Forms for camera submission.
 from django import forms
 from django.contrib.gis.geos import Point
 
-from .models import Camera, CameraImage
+from .models import Camera, CameraImage, CorrectionProposal
 
 _MAX_IMAGE_SIZE_MB = 20
 
@@ -153,6 +153,49 @@ class PhotoProposalForm(forms.ModelForm):
         instance = super().save(commit=False)
         instance.camera = camera
         instance.status = CameraImage.Status.PENDING
+        if commit:
+            instance.save()
+        return instance
+
+
+class CorrectionProposalForm(forms.ModelForm):
+    """Form for proposing a correction to an existing vetted camera."""
+
+    website = forms.CharField(
+        required=False,
+        widget=forms.TextInput(attrs={
+            "autocomplete": "off",
+            "tabindex": "-1",
+            "style": "position: absolute; left: -9999px;",
+        }),
+        label="",
+    )
+
+    class Meta:
+        model = CorrectionProposal
+        fields = ["message", "proposed_by"]
+        widgets = {
+            "message": forms.Textarea(attrs={
+                "class": "form-input",
+                "rows": 5,
+                "placeholder": "Describe what needs to be corrected or updated (e.g., wrong address, camera removed, type changed...)",
+            }),
+            "proposed_by": forms.TextInput(attrs={
+                "class": "form-input",
+                "placeholder": "Your email or name (optional)",
+            }),
+        }
+
+    def clean(self):
+        cleaned_data = super().clean()
+        if cleaned_data.get("website"):
+            raise forms.ValidationError("Spam detected.")
+        return cleaned_data
+
+    def save(self, camera, commit=True):
+        instance = super().save(commit=False)
+        instance.camera = camera
+        instance.status = CorrectionProposal.Status.PENDING
         if commit:
             instance.save()
         return instance

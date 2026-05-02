@@ -3,7 +3,7 @@ import io
 from django.contrib.gis.geos import Point
 from django.core.files.uploadedfile import SimpleUploadedFile
 
-from cameras.models import Camera, CameraImage
+from cameras.models import Camera, CameraImage, CorrectionProposal
 
 
 def make_camera(**kwargs):
@@ -34,3 +34,13 @@ def make_camera_image(camera, **kwargs):
     }
     defaults.update(kwargs)
     return CameraImage.objects.create(camera=camera, **defaults)
+
+
+def make_correction_proposal(camera, **kwargs):
+    """Return a saved CorrectionProposal with sensible defaults."""
+    defaults = {
+        "message": "Default correction message.",
+        "status": CorrectionProposal.Status.PENDING,
+    }
+    defaults.update(kwargs)
+    return CorrectionProposal.objects.create(camera=camera, **defaults)
