@@ -103,6 +103,20 @@
     #map.pick-mode,
     #map.pick-mode .leaflet-marker-icon,
     #map.pick-mode .leaflet-interactive { cursor: crosshair !important; }
+
+    /* Business name label (permanent tooltip, shown when has-shop filter is active) */
+    .business-label {
+        background: white;
+        border: 1px solid #d1d5db;
+        border-radius: 4px;
+        padding: 2px 7px;
+        font-size: 11px;
+        font-weight: 500;
+        color: #374151;
+        white-space: nowrap;
+        box-shadow: 0 1px 3px rgba(0,0,0,.12);
+    }
+    .leaflet-tooltip.business-label::before { display: none; }
 </style>
 {% endblock %}
 
@@ -192,20 +206,16 @@
                    x-model="filters.hasShop"
                    @change="applyFilters()"
                    class="form-checkbox rounded text-nola-purple">
-            <span class="text-sm">Private Cameras Only</span>
+            <span class="text-sm">Has associated business</span>
         </label>
 
-        <div class="mb-3">
-            <label class="block text-xs text-gray-500 mb-1">Camera Type</label>
-            <select x-model="filters.cameraType"
-                    @change="applyFilters()"
-                    class="w-full text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-nola-purple">
-                <option value="">All Types</option>
-                <template x-for="[value, label] in Object.entries(CAMERA_TYPE_LABELS)" :key="value">
-                    <option :value="value" x-text="label"></option>
-                </template>
-            </select>
-        </div>
+        <label class="flex items-center space-x-2 mb-3 cursor-pointer">
+            <input type="checkbox"
+                   x-model="filters.noPictures"
+                   @change="applyFilters()"
+                   class="form-checkbox rounded text-nola-purple">
+            <span class="text-sm">No photos yet</span>
+        </label>
 
         <div class="pt-2 border-t border-gray-200">
             <button @click="resetFilters()"
@@ -543,7 +553,7 @@ function cameraMap() {
         filters: {
             facialRecognition: false,
             hasShop: false,
-            cameraType: ''
+            noPictures: false,
         },
 
         get legendEntries() {
@@ -641,8 +651,8 @@ function cameraMap() {
                 if (this.filters.hasShop) {
                     params.append('has_shop', 'true');
                 }
-                if (this.filters.cameraType) {
-                    params.append('type', this.filters.cameraType);
+                if (this.filters.noPictures) {
+                    params.append('no_photos', 'true');
                 }
 
                 if (params.toString()) {
@@ -718,6 +728,15 @@ function cameraMap() {
                 `;
                 marker.bindPopup(popupContent);
 
+                if (this.filters.hasShop && props.associated_shop) {
+                    marker.bindTooltip(props.associated_shop, {
+                        permanent: true,
+                        direction: 'right',
+                        offset: [6, 0],
+                        className: 'business-label',
+                    });
+                }
+
                 // Route to the correct cluster group
                 const group = this.clusterGroups[cameraType] || this.clusterGroups['unknown'];
                 group.addLayer(marker);
@@ -731,7 +750,7 @@ function cameraMap() {
         resetFilters() {
             this.filters.facialRecognition = false;
             this.filters.hasShop = false;
-            this.filters.cameraType = '';
+            this.filters.noPictures = false;
             this.loadCameras();
         },
 

@@ -55,3 +55,19 @@ class CameraListAPITests(TestCase):
         self.assertIn("type", props["photos"][0])
 
 
+    def test_type_param_ignored(self):
+        make_camera(camera_type=Camera.CameraType.PROJECT_NOLA, cross_road="NOLA Camera")
+        make_camera(camera_type=Camera.CameraType.NOPD, cross_road="NOPD Camera")
+        response = self.client.get("/api/cameras/?type=project_nola")
+        cross_roads = [f["properties"]["cross_road"] for f in response.data["features"]]
+        self.assertIn("NOLA Camera", cross_roads)
+        self.assertIn("NOPD Camera", cross_roads)
+
+    def test_list_filter_no_photos(self):
+        camera_with_photo = make_camera(cross_road="Camera With Photo")
+        camera_no_photo = make_camera(cross_road="Camera No Photo")
+        make_camera_image(camera_with_photo, status=CameraImage.Status.APPROVED)
+        response = self.client.get("/api/cameras/?no_photos=true")
+        cross_roads = [f["properties"]["cross_road"] for f in response.data["features"]]
+        self.assertIn("Camera No Photo", cross_roads)
+        self.assertNotIn("Camera With Photo", cross_roads)

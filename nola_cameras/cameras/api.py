@@ -2,7 +2,7 @@
 DRF API views for cameras.
 """
 
-from django.db.models import Prefetch
+from django.db.models import Exists, OuterRef, Prefetch
 from rest_framework import generics
 
 from .models import Camera, CameraImage
@@ -16,7 +16,7 @@ class CameraListAPIView(generics.ListAPIView):
     Supports filtering via query parameters:
     - facial_recognition: true/false
     - has_shop: true/false
-    - type: project_nola/nopd/private/unknown
+    - no_photos: true
     """
 
     serializer_class = CameraGeoSerializer
@@ -43,8 +43,11 @@ class CameraListAPIView(generics.ListAPIView):
             else:
                 queryset = queryset.filter(associated_shop="")
 
-        camera_type = self.request.query_params.get("type")
-        if camera_type:
-            queryset = queryset.filter(camera_type=camera_type)
+        no_photos = self.request.query_params.get("no_photos")
+        if no_photos and no_photos.lower() == "true":
+            has_approved = CameraImage.objects.filter(
+                camera=OuterRef("pk"), status=CameraImage.Status.APPROVED
+            )
+            queryset = queryset.filter(~Exists(has_approved))
 
         return queryset
